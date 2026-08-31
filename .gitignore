@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.ruff_cache/
+
+# uv
+# (uv.lock is intentionally tracked for reproducible installs)
+
+# Environment / secrets
+.env
+.env.*
+
+# dbt
+target/
+dbt_packages/
+logs/
+
+# DuckDB / generated data
+*.duckdb
+*.duckdb.wal
+data/
+
+# Project planning files (not part of the shipped repo)
+create_issues.py
+halcyon-analytics-project.md

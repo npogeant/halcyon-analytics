@@ -1,0 +1,20 @@
+[project]
+name = "halcyon-analytics"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "dbt-core>=1.12.3",
+    "dbt-duckdb>=1.11.0",
+    "dlt>=1.30.0",
+    "duckdb>=1.5.5",
+    "faker>=40.37.0",
+    "ruff>=0.16.5",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.6.2",
+    "sqlfluff>=4.3.0",
+    "sqlfluff-templater-dbt>=4.3.0",
+]
