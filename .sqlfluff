@@ -1,0 +1,15 @@
+[sqlfluff]
+templater = dbt
+dialect = duckdb
+
+[sqlfluff:templater:dbt]
+project_dir = transform
+profiles_dir = transform
+profile = halcyon
+target = dev
+
+[sqlfluff:indentation]
+tab_space_size = 4
+
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = lower
