@@ -42,8 +42,15 @@ stops that count from growing further on repeat runs.
 ## Load metadata
 
 Every raw table carries `_loaded_at`, `_source_name`, `_load_id`, set once per pipeline run and identical
-across every row loaded in that run (alongside dlt's own `_dlt_load_id`/`_dlt_id`, which serve a different,
-internal purpose and are left as-is).
+across every row loaded in that run.
+
+Every raw table also carries `_dlt_load_id`/`_dlt_id` — these are dlt's own internal bookkeeping columns
+(load-package tracking, merge staging), not something this pipeline adds. They're deliberately left in
+place rather than stripped: `_dlt_load_id` in particular is part of the same mechanism behind the
+crash-safety guarantee below, and dlt's merge disposition can fall back to `_dlt_id` as a row identity when
+no primary key is set (not the case here — every merge table has one). They won't leak into dbt docs
+later, though: `AE-07`'s staging models select named columns explicitly (`renaming and casting only`), so
+`_dlt_load_id`/`_dlt_id` simply never get selected unless a model deliberately reaches for them.
 
 ## Idempotency and crash safety
 
