@@ -1,4 +1,4 @@
-.PHONY: setup seed build test docs demo clean
+.PHONY: setup seed ingest build test docs demo clean
 
 setup:
 	uv sync
@@ -6,6 +6,9 @@ setup:
 
 seed:
 	uv run python -m generator
+
+ingest:
+	uv run python -m ingestion
 
 build:
 	uv run dbt build --project-dir transform --profiles-dir transform
@@ -16,7 +19,7 @@ test:
 docs:
 	uv run dbt docs generate --project-dir transform --profiles-dir transform
 
-demo: seed build
+demo: seed ingest build
 
 clean:
 	rm -rf transform/target transform/dbt_packages data/*.duckdb data/*.duckdb.wal

@@ -65,6 +65,10 @@ def generate(defects: dict) -> dict:
     state_country = list(country)
     state_segment = list(segment)
     state_tier = list(tier)
+    # A real CRM maintains this on the row itself; ingestion (AE-04) uses it as
+    # the incremental merge cursor, so it must come from the source, not be
+    # derived downstream by diffing snapshots.
+    state_updated_at = list(created_at)
 
     months = month_ends(config.START_DATE, config.END_DATE)
     change_ptr = 0
@@ -78,6 +82,7 @@ def generate(defects: dict) -> dict:
                 state_segment[idx] = new_value
             else:
                 state_tier[idx] = new_value
+            state_updated_at[idx] = changes[change_ptr][0]
             change_ptr += 1
 
         present = [i for i in range(n) if created_at[i] <= month_end]
@@ -95,6 +100,7 @@ def generate(defects: dict) -> dict:
             "plan_tier": [state_tier[i] for i in present],
             "acquisition_channel": [acquisition_channel[i] for i in present],
             "created_at": [created_at[i].isoformat() for i in present],
+            "updated_at": [state_updated_at[i].isoformat() for i in present],
         }
         if post_schema_change:
             columns["segment"] = [state_segment[i] for i in present]

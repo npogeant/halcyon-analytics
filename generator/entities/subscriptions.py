@@ -24,6 +24,7 @@ def generate(defects: dict, customers: dict) -> dict:
     sub_started_at: list[str] = []
     sub_status: list[str] = []
     sub_active_until: list[str] = []
+    sub_updated_at: list[str] = []
 
     event_id: list[str] = []
     event_sub_id: list[str] = []
@@ -37,11 +38,14 @@ def generate(defects: dict, customers: dict) -> dict:
         if started_at > config.END_DATE:
             continue
 
-        def emit(evt_type: str, at, sid=sid):
+        last_event_at = [started_at]
+
+        def emit(evt_type: str, at, sid=sid, last_event_at=last_event_at):
             event_id.append(f"{sid}_e{len(event_id) + 1}")
             event_sub_id.append(sid)
             event_type.append(evt_type)
             event_at.append(at.isoformat())
+            last_event_at[0] = at
 
         cursor = started_at
         emit("created", cursor)
@@ -85,6 +89,7 @@ def generate(defects: dict, customers: dict) -> dict:
         sub_started_at.append(started_at.isoformat())
         sub_status.append(status)
         sub_active_until.append(active_until.isoformat())
+        sub_updated_at.append(last_event_at[0].isoformat())
 
     write_parquet(
         {
@@ -93,6 +98,7 @@ def generate(defects: dict, customers: dict) -> dict:
             "plan": sub_plan,
             "started_at": sub_started_at,
             "status": sub_status,
+            "updated_at": sub_updated_at,
         },
         f"{config.OUTPUT_DIR}/subscriptions/subscriptions.parquet",
     )
