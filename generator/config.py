@@ -1,0 +1,34 @@
+from __future__ import annotations
+
+from datetime import date
+
+SEED = 20260831
+
+N_CUSTOMERS = 5_000
+N_PRODUCTS = 60
+
+# Fixed history window (not "today") so the same seed is byte-identical on any run date.
+START_DATE = date(2024, 9, 1)
+END_DATE = date(2026, 8, 31)
+
+# Fixed dates for the two defects that need to land on a specific day.
+SCHEMA_CHANGE_DATE = date(2025, 9, 1)
+REFUND_SPIKE_DATE = date(2026, 3, 16)
+
+OUTPUT_DIR = "data/raw"
+
+COUNTRIES = ["US", "GB", "FR", "DE", "CA", "AU", "NL", "ES"]
+MARKETING_SEGMENTS = ["prospect", "trial", "active", "churned", "vip"]
+PLAN_TIERS = ["free", "starter", "growth", "enterprise"]
+
+# Every injected defect, on by default. See generator/README.md for what each one does
+# and which backlog issue exercises it.
+DEFECTS = {
+    "duplicate_orders": True,
+    "null_customer_id": True,
+    "cents_vs_decimal": True,
+    "naive_utc_timestamps": True,
+    "late_web_events": True,
+    "schema_change": True,
+    "volume_anomaly": True,
+}
