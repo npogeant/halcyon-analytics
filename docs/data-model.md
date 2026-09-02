@@ -47,13 +47,18 @@ channel/day grain, not per product).
 
 Written before implementation, per `AE-03`'s acceptance criteria — no fact table below exists yet.
 
-- **`fct_orders`** — one row per order line item (`order_id` + `order_item_id`). Refunds are allocated back
-  to the order line pro-rata by line revenue share, since the source `refunds` table only references
-  `payment_id`, not a specific order line. This allocation is a modeling *choice*, not a fact the source
-  provides — documented here so it isn't mistaken for a precise refund-to-line-item mapping.
-- **`fct_subscription_daily`** — one row per active subscription per calendar day (periodic snapshot).
-  Daily, not monthly, grain so month-end MRR (question 1) and the new/expansion/contraction/churn bridge
-  (question 2) can both be derived from the same table without a second fact.
+- **`fct_orders`** — one row per order line item, grain key **`(order_id, order_item_id)`** — a composite
+  key, not `order_item_id` alone. The generator's `order_item_id` happens to be globally unique (it's built
+  from a running counter across all orders), but that's an accident of how the generator constructs the
+  string, not a guarantee a real source would make; a real line-item ID is typically order-scoped (`item 1`,
+  `item 2`, ...). The uniqueness test in `AE-12` should enforce the composite key so the model stays correct
+  if that generator detail ever changes. Refunds are allocated back to the order line pro-rata by line
+  revenue share, since the source `refunds` table only references `payment_id`, not a specific order line —
+  a modeling *choice*, not a fact the source provides.
+- **`fct_subscription_daily`** — one row per active subscription per calendar day (periodic snapshot),
+  grain key **`(subscription_id, snapshot_date)`**. Daily, not monthly, grain so month-end MRR (question 1)
+  and the new/expansion/contraction/churn bridge (question 2) can both be derived from the same table
+  without a second fact.
 - **`fct_web_events`** — one row per raw event (`event_id`), unchanged grain from the source. No
   aggregation at ingestion; funnel and session-level metrics are computed downstream.
 
@@ -111,6 +116,7 @@ erDiagram
         string country
         string segment
         string plan_tier
+        string acquisition_channel
     }
     dim_product {
         string product_key PK
@@ -122,7 +128,7 @@ erDiagram
         decimal list_price
     }
     fct_orders {
-        string order_id
+        string order_id PK
         string order_item_id PK
         date order_date FK
         string customer_key FK
@@ -132,7 +138,7 @@ erDiagram
         decimal refund_amount
     }
     fct_subscription_daily {
-        string subscription_id
+        string subscription_id PK
         date snapshot_date PK
         string customer_key FK
         string plan
@@ -159,7 +165,30 @@ erDiagram
     }
 ```
 
-## 6. Generator gap: closed
+`dim_customer.plan_tier` and `fct_subscription_daily.plan` are deliberately two different concepts, not a
+duplicated dimension: `plan_tier` is a customer-level segmentation attribute (`free`, `starter`, `growth`,
+`enterprise` — a customer has one even with no active subscription), while `plan` is the specific paid plan
+a given subscription is billed under as of that snapshot day (`starter`, `growth`, `enterprise` only — no
+`free` subscription exists). The generator currently assigns them independently, so in practice they can
+disagree for a given customer (e.g. `plan_tier = free` while an active subscription bills `growth`) — this
+mirrors a real SaaS platform where account-level tier and billing plan drift out of sync, and is left as-is
+rather than artificially forced to agree.
+
+## 6. Implementation notes for later issues
+
+Two things this design gets right on paper but that are easy to get wrong once real dbt code is written —
+flagged here so `AE-10`/`AE-12`/`AE-13`/`AE-14` don't have to rediscover them:
+
+- **SCD2 joins must use the as-of range, not the surrogate key alone.** `fct_orders` and
+  `fct_subscription_daily` join `dim_customer`/`dim_product` on `order_date BETWEEN valid_from AND
+  valid_to` (or the fact's own date), never on `customer_id` alone — a plain equi-join on the natural key
+  returns every historical version and silently fans out the fact.
+- **`fct_web_events.customer_key` is nullable by design** (anonymous visitors). Any downstream model that
+  joins `fct_web_events` to `dim_customer` must use a `LEFT JOIN`; an `INNER JOIN` would silently drop
+  every anonymous event, which is roughly 30% of event volume in the generated data — a large enough loss
+  to visibly skew funnel metrics without erroring.
+
+## 7. Generator gap: closed
 
 This design surfaced a real gap: the generator (`AE-02`) didn't originally emit an acquisition channel on
 `customers`, or a channel/device on `web_events`, which questions 4 and 7 both need. Rather than design
