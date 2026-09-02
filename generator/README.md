@@ -43,6 +43,14 @@ default.
 | Schema change: `customers.marketing_segment` → `segment`, `consent_flag` added | `schema_change` | `customers` monthly snapshots | 2025-09-01 onward | `AE-05`, `AE-06`, `AE-09` (contract break, on purpose) |
 | Volume anomaly: refunds spike ~8x the local daily baseline | `volume_anomaly` | `refunds.parquet` | 2026-03-16 | `AE-28` (anomaly monitoring) |
 
+## Conformed attribution fields
+
+`customers.acquisition_channel` and `web_events.channel`/`web_events.device` were added after `AE-03`'s
+bus matrix showed business questions 4 and 7 (CAC by channel, conversion by device/channel) had no source
+data to answer them from. All channel-valued fields (`customers`, `web_events`, `marketing_spend`) draw
+from the same `config.CHANNELS` list, so the values can't drift between sources — see
+`docs/adr/0002-conformed-dimensions.md`.
+
 ## Design notes
 
 - Each entity draws from its own seeded RNG stream (`generator/rng.py`), keyed by entity name, so adding

@@ -13,7 +13,7 @@ processes and their grain, not from whatever tables the source happens to have.
 | 4 | What is blended and per-channel CAC, and how does it trend? | `cac` (non-additive ratio: spend ÷ new customers) | `channel`, `date` | `marketing_spend` + new-customer counts from `dim_customer` |
 | 5 | Which products drive first orders, and which drive repeat orders? | `order_count`, `revenue` (additive), sliced by order sequence number | `product`, `customer`, `date` | `fct_orders` |
 | 6 | What is the refund rate by product and by month, and is it moving abnormally? | `refund_rate` (non-additive ratio: refund amount ÷ order amount) | `product`, `date` | `fct_orders` (refund amount allocated to line grain — see §3) |
-| 7 | What is the conversion rate `checkout_started` → `checkout_completed`, by device and channel? | `conversion_rate` (non-additive ratio) | `channel`, `date`, device *(gap — see §5)* | `fct_web_events` |
+| 7 | What is the conversion rate `checkout_started` → `checkout_completed`, by device and channel? | `conversion_rate` (non-additive ratio) | `channel`, `device`, `date` | `fct_web_events` |
 | 8 | Which active customers show early churn signals, and can operations act on that list today? | derived signal, not a stored measure (built from subscription state + behavioral recency, not summed) | `customer` | `fct_subscription_daily` + `fct_web_events` (feeds a mart, not a new fact) |
 
 Question 8 is deliberately not traced to a single fact table: it's a customer-level segment computed by
@@ -23,23 +23,25 @@ aggregated like the others.
 ## 2. Bus matrix
 
 Rows are business processes; columns are the conformed dimensions declared in `docs/adr/0002-conformed-dimensions.md`.
-`X` means the process's fact table carries that dimension as a foreign key (or, for `channel`, will once
-the gap in §5 is closed).
+`X` means the process's fact table carries that dimension as a foreign key; `X*` means it's resolved by
+joining to `dim_customer` rather than stored directly on the fact.
 
 | Business process | `date` | `customer` | `product` | `channel` | `plan` |
 |---|---|---|---|---|---|
-| Orders | X | X | X | (gap) | | 
+| Orders | X | X | X | X* | |
 | Subscriptions | X | X | | | X |
-| Web sessions | X | X (nullable) | X | (gap) | |
+| Web sessions | X | X (nullable) | X | X | |
 | Marketing spend | X | | | X | |
 | Support | X | X | | | |
 
-`plan` and `channel` are each used by exactly one process today. They're still declared as conformed
-dimensions (not embedded attributes) because `AE-17`/`AE-18` plan to report plan-level and channel-level
-metrics across processes later (e.g. CAC per channel compared against orders attributed to that channel) —
-conforming them now avoids a rename later. `product` is not applicable to subscriptions (a subscription is
-sold against a `plan`, not a product SKU) or marketing spend (spend is booked at channel/day grain, not
-per product).
+`channel` now has three real consumers — `marketing_spend`, `web_events` (as of the customer/event's own
+channel attribution), and `orders` (as of the ordering customer's *acquisition* channel, joined through
+`dim_customer` rather than stored redundantly on `fct_orders`). All three source their values from the
+same `config.CHANNELS` list in the generator, so the dimension can't drift between sources before it's
+even built. `plan` is still used by exactly one process (`subscriptions`); it stays conformed rather than
+embedded because `AE-17`/`AE-18` plan to report plan-level metrics across processes later, and `product` is
+not applicable to subscriptions (sold against a `plan`, not a SKU) or marketing spend (booked at
+channel/day grain, not per product).
 
 ## 3. Fact tables: declared grain
 
@@ -157,11 +159,15 @@ erDiagram
     }
 ```
 
-## 6. Known gaps carried from `AE-02`
+## 6. Generator gap: closed
 
-The generator (`AE-02`) doesn't currently emit an acquisition/attribution channel on `customers`, `orders`,
-or `web_events`, and doesn't emit a device on `web_events`. Business questions 4 and 7 need both. This is
-flagged here rather than silently designed around, because the bus matrix and grain declarations above are
-written as the *target* design — closing this gap is a prerequisite for `AE-17`'s `marketing_spend`
-semantic model and for `fct_web_events` fully answering question 7, and should be picked up as a small
-follow-up to the generator before those issues land.
+This design surfaced a real gap: the generator (`AE-02`) didn't originally emit an acquisition channel on
+`customers`, or a channel/device on `web_events`, which questions 4 and 7 both need. Rather than design
+around it, the generator was extended (same PR as this doc) to add:
+- `customers.acquisition_channel` — fixed at signup, not part of the attribute-change log.
+- `web_events.channel` and `web_events.device`.
+- A single `config.CHANNELS` list, shared by `customers`, `web_events`, and `marketing_spend`, so `channel`
+  can't drift between sources before a single dbt model has even been written.
+
+`generator/README.md` documents the field-level detail; this section stays only as a record that the gap
+was caught at design time, before implementation, rather than discovered downstream.

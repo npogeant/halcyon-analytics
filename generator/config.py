@@ -21,6 +21,13 @@ COUNTRIES = ["US", "GB", "FR", "DE", "CA", "AU", "NL", "ES"]
 MARKETING_SEGMENTS = ["prospect", "trial", "active", "churned", "vip"]
 PLAN_TIERS = ["free", "starter", "growth", "enterprise"]
 
+# The conformed `channel` dimension (docs/adr/0002-conformed-dimensions.md). Every
+# entity that carries a channel attribute draws from this same list, so CAC
+# (marketing_spend) and attribution (customers, web_events) never drift apart.
+CHANNELS = ["paid_search", "paid_social", "email", "affiliate", "display", "organic"]
+DEVICES = ["desktop", "mobile", "tablet"]
+DEVICE_WEIGHTS = [0.50, 0.40, 0.10]
+
 # Every injected defect, on by default. See generator/README.md for what each one does
 # and which backlog issue exercises it.
 DEFECTS = {
