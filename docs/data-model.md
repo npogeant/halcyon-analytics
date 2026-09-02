@@ -87,15 +87,15 @@ grain to declare).
 ```mermaid
 erDiagram
     dim_date ||--o{ fct_orders : "order_date"
-    dim_customer ||--o{ fct_orders : "customer_id (as-of order date)"
-    dim_product ||--o{ fct_orders : "product_id"
+    dim_customer ||--o{ fct_orders : "customer_key (as-of order date)"
+    dim_product ||--o{ fct_orders : "product_key"
 
     dim_date ||--o{ fct_subscription_daily : "snapshot_date"
-    dim_customer ||--o{ fct_subscription_daily : "customer_id (as-of snapshot date)"
+    dim_customer ||--o{ fct_subscription_daily : "customer_key (as-of snapshot date)"
 
     dim_date ||--o{ fct_web_events : "event_date"
-    dim_customer ||--o{ fct_web_events : "customer_id (nullable, as-of event date)"
-    dim_product ||--o{ fct_web_events : "product_id (nullable)"
+    dim_customer ||--o{ fct_web_events : "customer_key (nullable, as-of event date)"
+    dim_product ||--o{ fct_web_events : "product_key (nullable)"
 
     dim_date ||--o{ marketing_spend : "spend_date"
 
