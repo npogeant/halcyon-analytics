@@ -34,6 +34,9 @@ def generate(defects: dict) -> dict:
     country = rng.choice(config.COUNTRIES, size=n).tolist()
     segment = rng.choice(config.MARKETING_SEGMENTS, size=n).tolist()
     tier = rng.choice(config.PLAN_TIERS, size=n).tolist()
+    # Fixed at signup, never revisited: acquisition channel is a point-in-time
+    # fact about how the customer arrived, not an attribute that drifts.
+    acquisition_channel = rng.choice(config.CHANNELS, size=n).tolist()
     emails = [fake.unique.email() for _ in range(n)]
 
     # A quarter of customers change 1-3 attributes at some point after signup.
@@ -90,6 +93,7 @@ def generate(defects: dict) -> dict:
             "email": [emails[i] for i in present],
             "country": [state_country[i] for i in present],
             "plan_tier": [state_tier[i] for i in present],
+            "acquisition_channel": [acquisition_channel[i] for i in present],
             "created_at": [created_at[i].isoformat() for i in present],
         }
         if post_schema_change:

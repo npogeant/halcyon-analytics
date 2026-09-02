@@ -5,7 +5,7 @@ from ..dates import day_range
 from ..rng import rng_for
 from ..writer import write_text_lines
 
-CHANNELS = {
+SPEND_RANGES = {
     "paid_search": (400, 1200),
     "paid_social": (300, 900),
     "email": (20, 80),
@@ -20,7 +20,8 @@ def generate(defects: dict) -> dict:
 
     lines = []
     for day in day_range(config.START_DATE, config.END_DATE):
-        for channel, (low, high) in CHANNELS.items():
+        for channel in config.CHANNELS:
+            low, high = SPEND_RANGES[channel]
             spend = 0.0 if high == 0 else round(float(rng.uniform(low, high)), 2)
             lines.append(f"{day.isoformat()},{channel},{spend},USD")
 

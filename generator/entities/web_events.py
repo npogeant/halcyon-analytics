@@ -45,6 +45,10 @@ def generate(defects: dict, customers: dict, products: dict) -> dict:
         is_late = defects["late_web_events"] and (rng.random(n_events) < 0.02)
         late_offset_days = rng.integers(1, 4, size=n_events)
         page_choice = rng.choice(PAGES, size=n_events)
+        channel_choice = rng.choice(config.CHANNELS, size=n_events)
+        device_choice = rng.choice(
+            config.DEVICES, size=n_events, p=config.DEVICE_WEIGHTS
+        )
         product_choice = (
             rng.choice(product_ids, size=n_events) if len(product_ids) else None
         )
@@ -80,7 +84,8 @@ def generate(defects: dict, customers: dict, products: dict) -> dict:
             lines.append(
                 f'{{"event_id": "{event_id}", "customer_id": {cust_json}, '
                 f'"session_id": "{session_id}", "event_type": "{event_type}", '
-                f'"event_at": "{ts}", "product_id": {prod_json}, "url": "{page_choice[i]}"}}'
+                f'"event_at": "{ts}", "product_id": {prod_json}, "url": "{page_choice[i]}", '
+                f'"channel": "{channel_choice[i]}", "device": "{device_choice[i]}"}}'
             )
 
         write_text_lines(
