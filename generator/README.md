@@ -51,6 +51,16 @@ data to answer them from. All channel-valued fields (`customers`, `web_events`, 
 from the same `config.CHANNELS` list, so the values can't drift between sources — see
 `docs/adr/0002-conformed-dimensions.md`.
 
+## Incremental cursors
+
+`customers.updated_at` and `subscriptions.updated_at` were added for `AE-04`'s ingestion pipeline, which
+needs a real merge cursor for these two genuinely-mutable entities. Computing "when did this change" by
+diffing snapshots at ingestion time would itself be business logic, forbidden by the ELT boundary
+(`AE-06`) — so, as a real source system would, the value is set at the point of change: `customers.updated_at`
+is the most recent attribute-change date (or `created_at` if none), and `subscriptions.updated_at` is the
+latest lifecycle event's timestamp. See `ingestion/README.md` for how every table's cursor and write
+disposition were chosen.
+
 ## Design notes
 
 - Each entity draws from its own seeded RNG stream (`generator/rng.py`), keyed by entity name, so adding
