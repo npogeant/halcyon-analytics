@@ -56,11 +56,18 @@ def halcyon_relational_source(load_id: str, loaded_at: str):
         return _with_metadata(rows, name, load_id, loaded_at)
 
     @dlt.resource(
-        name="customers", write_disposition="merge", primary_key="customer_id"
+        name="customers", write_disposition="append", primary_key="customer_id"
     )
     def customers(
         cursor=dlt.sources.incremental("updated_at", initial_value=_EPOCH_DATETIME),  # noqa: B008 -- dlt's documented incremental pattern
     ):
+        # append, not merge: the generator's 24 monthly snapshot files are the
+        # only place this project's full customer attribute history exists.
+        # Merging on customer_id would collapse them to current-state-only,
+        # destroying exactly the history AE-10's dbt snapshot needs to answer
+        # "what was this customer's plan tier as of an arbitrary past date."
+        # primary_key still enables cross-run boundary dedup (see `orders`);
+        # it doesn't collapse the within-run history.
         yield from meta(
             _read_parquet_glob(f"{config.RAW_DIR}/customers/customers_*.parquet"),
             "customers",

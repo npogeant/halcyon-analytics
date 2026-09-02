@@ -15,7 +15,6 @@ uv run python -m ingestion --full-refresh   # drop raw data + incremental state,
 
 | Table | Disposition | Primary key | Incremental cursor | Why |
 |---|---|---|---|---|
-| `customers` | `merge` | `customer_id` | `updated_at` | Genuinely mutable: attributes drift over the customer's lifetime (`AE-02`'s attribute-change log). Raw holds current state per customer, not one row per historical snapshot file. |
 | `products` | `merge` | `product_id` | `created_at` | Catalog metadata is conceptually mutable even though this generator never changes it post-creation; merge is still the correct disposition for what this table represents. |
 | `subscriptions` | `merge` | `subscription_id` | `updated_at` | A subscription's status changes over its lifecycle (`trialing` → `active` → ... → `cancelled`); merge keeps one current-state row per subscription. |
 | `product_prices` | `append` | `(product_id, effective_date)` | `effective_date` | Each price change is a new, immutable event — never edited, only appended to. |
@@ -26,6 +25,7 @@ uv run python -m ingestion --full-refresh   # drop raw data + incremental state,
 | `support_tickets` | `append` | `ticket_id` | `created_at` | The generator doesn't model ticket status mutation, so there's nothing to merge; append reflects what the source actually provides. |
 | `marketing_spend` | `append` | `(date, channel)` | `date` | A daily fact at day × channel grain, booked once per day and never revised. |
 | **`orders`** | **`append`** | `order_id` | `order_date` | **Deliberately not merged.** The generator injects a ~0.1% duplicate-`order_id` defect on purpose, and raw must be a faithful record of what the source sent — including its defects. `AE-07` deduplicates this in staging, with a documented tie-break rule. See below for what `primary_key` is still doing here. |
+| **`customers`** | **`append`** | `customer_id` | `updated_at` | **Also deliberately not merged**, for a different reason: the generator's 24 monthly snapshot files are the *only* place this project's customer attribute history exists (`country`/`segment`/`plan_tier` over time). Merging on `customer_id` would collapse everything to current-state-only, destroying exactly the history `AE-10`'s `dbt snapshot` needs to answer "what was this customer's plan tier as of an arbitrary past date." Raw holds all ~62.8k historical snapshot rows for 5,000 customers, not a collapsed 5,000. |
 
 `primary_key` on an `append` resource does **not** collapse rows within a single load — it only lets
 dlt's incremental extraction recognize "I already sent this row at this cursor value on a previous run"
@@ -35,7 +35,9 @@ given day, many rows share the exact same cursor value, and without `primary_key
 broke idempotency during development here (`orders` grew from 33,386 to 33,474 rows on a second, unchanged
 run before this was added). With `primary_key` set, the two genuinely-duplicate `order_id` rows still both
 land in `raw.orders` on the *first* load (dlt has no prior-run state yet to compare against), and neither
-grows further on subsequent runs.
+grows further on subsequent runs. `customers` works the same way: all ~62.8k historical rows land on the
+first load regardless of `primary_key` (dlt never dedupes within a single load), and `primary_key` only
+stops that count from growing further on repeat runs.
 
 ## Load metadata
 
