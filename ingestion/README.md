@@ -11,6 +11,18 @@ uv run python -m ingestion
 uv run python -m ingestion --full-refresh   # drop raw data + incremental state, reload everything
 ```
 
+To inspect the raw layer directly (no dbt model required):
+
+```
+make shell
+# opens the DuckDB CLI (v1.5.5, matching the `duckdb` Python driver pin) on data/halcyon.duckdb
+```
+
+```sql
+SELECT * FROM raw.orders LIMIT 10;
+SELECT table_name FROM information_schema.tables WHERE table_schema = 'raw';
+```
+
 ## Write disposition, per table
 
 | Table | Disposition | Primary key | Incremental cursor | Why |
