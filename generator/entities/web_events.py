@@ -52,6 +52,16 @@ def generate(defects: dict, customers: dict, products: dict) -> dict:
         product_choice = (
             rng.choice(product_ids, size=n_events) if len(product_ids) else None
         )
+        # Always-present nested object, used to demonstrate the flatten-vs-JSON
+        # ingestion decision (AE-05) independent of the schema-change defect below.
+        geo_country_choice = rng.choice(config.COUNTRIES, size=n_events)
+        has_campaign = (
+            defects["web_events_schema_change"]
+            and day >= config.WEB_EVENTS_SCHEMA_CHANGE_DATE
+        )
+        campaign_choice = (
+            rng.choice(config.CAMPAIGNS, size=n_events) if has_campaign else None
+        )
 
         lines = []
         for i in range(n_events):
@@ -81,11 +91,15 @@ def generate(defects: dict, customers: dict, products: dict) -> dict:
 
             event_id = f"evt_{day_idx:04d}_{i:07d}"
             session_id = f"ses_{session_nums[i]}"
+            campaign_field = (
+                f', "utm_campaign": "{campaign_choice[i]}"' if has_campaign else ""
+            )
             lines.append(
                 f'{{"event_id": "{event_id}", "customer_id": {cust_json}, '
                 f'"session_id": "{session_id}", "event_type": "{event_type}", '
                 f'"event_at": "{ts}", "product_id": {prod_json}, "url": "{page_choice[i]}", '
-                f'"channel": "{channel_choice[i]}", "device": "{device_choice[i]}"}}'
+                f'"channel": "{channel_choice[i]}", "device": "{device_choice[i]}", '
+                f'"geo": {{"country": "{geo_country_choice[i]}"}}{campaign_field}}}'
             )
 
         write_text_lines(
