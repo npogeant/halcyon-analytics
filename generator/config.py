@@ -11,9 +11,10 @@ N_PRODUCTS = 60
 START_DATE = date(2024, 9, 1)
 END_DATE = date(2026, 8, 31)
 
-# Fixed dates for the two defects that need to land on a specific day.
+# Fixed dates for the defects that need to land on a specific day.
 SCHEMA_CHANGE_DATE = date(2025, 9, 1)
 REFUND_SPIKE_DATE = date(2026, 3, 16)
+WEB_EVENTS_SCHEMA_CHANGE_DATE = date(2025, 11, 1)
 
 OUTPUT_DIR = "data/raw"
 
@@ -28,6 +29,11 @@ CHANNELS = ["paid_search", "paid_social", "email", "affiliate", "display", "orga
 DEVICES = ["desktop", "mobile", "tablet"]
 DEVICE_WEIGHTS = [0.50, 0.40, 0.10]
 
+# Marketing added campaign attribution to the event tracker partway through
+# history (AE-05's schema-evolution defect) -- events before
+# WEB_EVENTS_SCHEMA_CHANGE_DATE simply have no `utm_campaign` key at all.
+CAMPAIGNS = ["spring_sale", "black_friday", "always_on", "referral_promo"]
+
 # Every injected defect, on by default. See generator/README.md for what each one does
 # and which backlog issue exercises it.
 DEFECTS = {
@@ -38,4 +44,5 @@ DEFECTS = {
     "late_web_events": True,
     "schema_change": True,
     "volume_anomaly": True,
+    "web_events_schema_change": True,
 }

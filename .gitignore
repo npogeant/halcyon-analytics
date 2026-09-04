@@ -24,3 +24,6 @@ data/
 # Project planning files (not part of the shipped repo)
 create_issues.py
 halcyon-analytics-project.md
+
+# Claude Code runtime artifacts
+.claude/

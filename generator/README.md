@@ -39,9 +39,10 @@ default.
 | Null `customer_id` on a small % of orders | `null_customer_id` | `orders.parquet` | throughout | `AE-06` (raw-layer contract), `AE-09` (mart contracts) |
 | Money in cents (payments/refunds) vs decimal (orders, product_prices) | `cents_vs_decimal` | `payments.parquet`, `refunds.parquet` | throughout | `AE-07` (`cents_to_decimal()` macro) |
 | Naive vs UTC-suffixed timestamps mixed (~5%) | `naive_utc_timestamps` | `web_events` JSONL `event_at` | throughout | `AE-07` (`to_utc()` macro) |
-| ~2% of `web_events` arrive 1–3 days late (`event_at` date < partition `dt`) | `late_web_events` | `web_events` JSONL | throughout | `AE-05` (event_at vs `_loaded_at`), `AE-14` (late-arriving lookback) |
-| Schema change: `customers.marketing_segment` → `segment`, `consent_flag` added | `schema_change` | `customers` monthly snapshots | 2025-09-01 onward | `AE-05`, `AE-06`, `AE-09` (contract break, on purpose) |
+| ~2% of `web_events` arrive 1–3 days late (`event_at` date < partition `dt`) | `late_web_events` | `web_events` JSONL | throughout | `AE-05` (`event_at` vs `_partition_date`), `AE-14` (late-arriving lookback) |
+| Schema change: `customers.marketing_segment` → `segment`, `consent_flag` added | `schema_change` | `customers` monthly snapshots | 2025-09-01 onward | `AE-06`, `AE-09` (contract break, on purpose) |
 | Volume anomaly: refunds spike ~8x the local daily baseline | `volume_anomaly` | `refunds.parquet` | 2026-03-16 | `AE-28` (anomaly monitoring) |
+| Schema change: `web_events.utm_campaign` appears (key absent before, present after) | `web_events_schema_change` | `web_events` JSONL | 2025-11-01 onward | `AE-05` (dlt schema evolution, `schema_update` log) |
 
 ## Conformed attribution fields
 
@@ -60,6 +61,14 @@ diffing snapshots at ingestion time would itself be business logic, forbidden by
 is the most recent attribute-change date (or `created_at` if none), and `subscriptions.updated_at` is the
 latest lifecycle event's timestamp. See `ingestion/README.md` for how every table's cursor and write
 disposition were chosen.
+
+## Nested field
+
+Every `web_events` row also carries `geo: {"country": ...}` — a genuine nested object, always present
+(unlike `utm_campaign`, this isn't a defect toggle), added specifically to give `AE-05` a real
+flatten-vs-JSON ingestion decision to make on a field with no downstream meaning yet, rather than
+retrofitting one onto `channel`/`device`, which the bus matrix (`docs/data-model.md`) already documents as
+flat top-level dimensions.
 
 ## Design notes
 

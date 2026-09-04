@@ -2,16 +2,12 @@ from __future__ import annotations
 
 import csv
 import glob
-import uuid
-from datetime import UTC, datetime
 
 import dlt
 import pyarrow.parquet as pq
 
 from . import config
-
-_EPOCH_DATE = "1970-01-01"
-_EPOCH_DATETIME = "1970-01-01T00:00:00"
+from .common import EPOCH_DATE, EPOCH_DATETIME, new_load_id, now_iso, with_metadata
 
 
 def _read_parquet(path: str):
@@ -40,26 +36,16 @@ def _read_support_tickets_csv(path: str):
             yield dict(zip(header, fields[: len(header)]))
 
 
-def _with_metadata(rows, source_name: str, load_id: str, loaded_at: str):
-    for row in rows:
-        yield {
-            **row,
-            "_loaded_at": loaded_at,
-            "_source_name": source_name,
-            "_load_id": load_id,
-        }
-
-
 @dlt.source(name="halcyon_relational")
 def halcyon_relational_source(load_id: str, loaded_at: str):
     def meta(rows, name):
-        return _with_metadata(rows, name, load_id, loaded_at)
+        return with_metadata(rows, name, load_id, loaded_at)
 
     @dlt.resource(
         name="customers", write_disposition="append", primary_key="customer_id"
     )
     def customers(
-        cursor=dlt.sources.incremental("updated_at", initial_value=_EPOCH_DATETIME),  # noqa: B008 -- dlt's documented incremental pattern
+        cursor=dlt.sources.incremental("updated_at", initial_value=EPOCH_DATETIME),  # noqa: B008 -- dlt's documented incremental pattern
     ):
         # append, not merge: the generator's 24 monthly snapshot files are the
         # only place this project's full customer attribute history exists.
@@ -75,7 +61,7 @@ def halcyon_relational_source(load_id: str, loaded_at: str):
 
     @dlt.resource(name="products", write_disposition="merge", primary_key="product_id")
     def products(
-        cursor=dlt.sources.incremental("created_at", initial_value=_EPOCH_DATE),  # noqa: B008 -- dlt's documented incremental pattern
+        cursor=dlt.sources.incremental("created_at", initial_value=EPOCH_DATE),  # noqa: B008 -- dlt's documented incremental pattern
     ):
         yield from meta(
             _read_parquet(f"{config.RAW_DIR}/products/products.parquet"), "products"
@@ -87,7 +73,7 @@ def halcyon_relational_source(load_id: str, loaded_at: str):
         primary_key=["product_id", "effective_date"],
     )
     def product_prices(
-        cursor=dlt.sources.incremental("effective_date", initial_value=_EPOCH_DATE),  # noqa: B008 -- dlt's documented incremental pattern
+        cursor=dlt.sources.incremental("effective_date", initial_value=EPOCH_DATE),  # noqa: B008 -- dlt's documented incremental pattern
     ):
         yield from meta(
             _read_parquet(f"{config.RAW_DIR}/product_prices/product_prices.parquet"),
@@ -96,7 +82,7 @@ def halcyon_relational_source(load_id: str, loaded_at: str):
 
     @dlt.resource(name="orders", write_disposition="append", primary_key="order_id")
     def orders(
-        cursor=dlt.sources.incremental("order_date", initial_value=_EPOCH_DATE),  # noqa: B008 -- dlt's documented incremental pattern
+        cursor=dlt.sources.incremental("order_date", initial_value=EPOCH_DATE),  # noqa: B008 -- dlt's documented incremental pattern
     ):
         # primary_key here only lets dlt's incremental de-duplicate rows it
         # already sent at the same order_date boundary on a *later* run --
@@ -123,7 +109,7 @@ def halcyon_relational_source(load_id: str, loaded_at: str):
         name="subscriptions", write_disposition="merge", primary_key="subscription_id"
     )
     def subscriptions(
-        cursor=dlt.sources.incremental("updated_at", initial_value=_EPOCH_DATETIME),  # noqa: B008 -- dlt's documented incremental pattern
+        cursor=dlt.sources.incremental("updated_at", initial_value=EPOCH_DATETIME),  # noqa: B008 -- dlt's documented incremental pattern
     ):
         yield from meta(
             _read_parquet(f"{config.RAW_DIR}/subscriptions/subscriptions.parquet"),
@@ -136,7 +122,7 @@ def halcyon_relational_source(load_id: str, loaded_at: str):
         primary_key="subscription_event_id",
     )
     def subscription_events(
-        cursor=dlt.sources.incremental("event_at", initial_value=_EPOCH_DATETIME),  # noqa: B008 -- dlt's documented incremental pattern
+        cursor=dlt.sources.incremental("event_at", initial_value=EPOCH_DATETIME),  # noqa: B008 -- dlt's documented incremental pattern
     ):
         yield from meta(
             _read_parquet(
@@ -147,7 +133,7 @@ def halcyon_relational_source(load_id: str, loaded_at: str):
 
     @dlt.resource(name="payments", write_disposition="append", primary_key="payment_id")
     def payments(
-        cursor=dlt.sources.incremental("paid_at", initial_value=_EPOCH_DATE),  # noqa: B008 -- dlt's documented incremental pattern
+        cursor=dlt.sources.incremental("paid_at", initial_value=EPOCH_DATE),  # noqa: B008 -- dlt's documented incremental pattern
     ):
         yield from meta(
             _read_parquet(f"{config.RAW_DIR}/payments/payments.parquet"), "payments"
@@ -155,7 +141,7 @@ def halcyon_relational_source(load_id: str, loaded_at: str):
 
     @dlt.resource(name="refunds", write_disposition="append", primary_key="refund_id")
     def refunds(
-        cursor=dlt.sources.incremental("refunded_at", initial_value=_EPOCH_DATE),  # noqa: B008 -- dlt's documented incremental pattern
+        cursor=dlt.sources.incremental("refunded_at", initial_value=EPOCH_DATE),  # noqa: B008 -- dlt's documented incremental pattern
     ):
         yield from meta(
             _read_parquet(f"{config.RAW_DIR}/refunds/refunds.parquet"), "refunds"
@@ -165,7 +151,7 @@ def halcyon_relational_source(load_id: str, loaded_at: str):
         name="support_tickets", write_disposition="append", primary_key="ticket_id"
     )
     def support_tickets(
-        cursor=dlt.sources.incremental("created_at", initial_value=_EPOCH_DATE),  # noqa: B008 -- dlt's documented incremental pattern
+        cursor=dlt.sources.incremental("created_at", initial_value=EPOCH_DATE),  # noqa: B008 -- dlt's documented incremental pattern
     ):
         yield from meta(
             _read_support_tickets_csv(
@@ -180,7 +166,7 @@ def halcyon_relational_source(load_id: str, loaded_at: str):
         primary_key=["date", "channel"],
     )
     def marketing_spend(
-        cursor=dlt.sources.incremental("date", initial_value=_EPOCH_DATE),  # noqa: B008 -- dlt's documented incremental pattern
+        cursor=dlt.sources.incremental("date", initial_value=EPOCH_DATE),  # noqa: B008 -- dlt's documented incremental pattern
     ):
         yield from meta(
             _read_csv(f"{config.RAW_DIR}/marketing_spend/marketing_spend.csv"),
@@ -203,8 +189,8 @@ def halcyon_relational_source(load_id: str, loaded_at: str):
 
 
 def run(full_refresh: bool = False):
-    load_id = str(uuid.uuid4())
-    loaded_at = datetime.now(UTC).isoformat()
+    load_id = new_load_id()
+    loaded_at = now_iso()
 
     pipeline = dlt.pipeline(
         pipeline_name=config.PIPELINE_NAME,
