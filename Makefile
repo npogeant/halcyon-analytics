@@ -1,4 +1,4 @@
-.PHONY: setup seed ingest build test docs demo clean
+.PHONY: setup seed ingest build test docs demo shell clean
 
 setup:
 	uv sync
@@ -20,6 +20,9 @@ docs:
 	uv run dbt docs generate --project-dir transform --profiles-dir transform
 
 demo: seed ingest build
+
+shell:
+	duckdb data/halcyon.duckdb
 
 clean:
 	rm -rf transform/target transform/dbt_packages data/*.duckdb data/*.duckdb.wal
