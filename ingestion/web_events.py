@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import glob
-import json
 import logging
 import re
-from pathlib import Path
 
 import dlt
 import pyarrow as pa
+import pyarrow.json as pa_json
 
 from . import config
 from .common import EPOCH_DATE, new_load_id, now_iso
@@ -16,18 +15,19 @@ logger = logging.getLogger("ingestion.web_events")
 
 _PARTITION_RE = re.compile(r"dt=(\d{4}-\d{2}-\d{2})")
 
-_COLUMNS = [
-    "event_id",
-    "customer_id",
-    "session_id",
-    "event_type",
-    "event_at",
-    "product_id",
-    "url",
-    "channel",
-    "device",
-    "geo",
-]
+# The only type this pipeline forces: event_at must stay a raw string, not be
+# auto-parsed into a timestamp. pyarrow's JSON reader otherwise infers
+# `event_at` as timestamp[s] from the well-formed rows and silently collapses
+# the naive-vs-UTC-suffixed distinction the generator injects on purpose
+# (the exact defect AE-07's `to_utc()` macro exists to fix downstream) --
+# that's ingestion making a business decision it isn't allowed to make.
+# Every other field, including any field this code has never seen before, is
+# picked up automatically (`unexpected_field_behavior="infer"`): no column
+# allowlist to maintain, no code change needed if the source adds a field.
+_PARSE_OPTIONS = pa_json.ParseOptions(
+    explicit_schema=pa.schema([("event_at", pa.string())]),
+    unexpected_field_behavior="infer",
+)
 
 
 def _partition_date(path: str) -> str:
@@ -38,40 +38,21 @@ def _partition_date(path: str) -> str:
 
 
 def _read_partition_as_table(path: str, load_id: str, loaded_at: str) -> pa.Table:
-    # Columnar, not row-by-row: dlt normalizes an arrow table via its fast
-    # path (no per-row Python dict typing/coercion), which is what makes
-    # ~5M events tractable here -- the row-by-row dict version of this
-    # resource took over 6 minutes; this reads and loads the same data in a
-    # fraction of that.
+    # pyarrow's native JSON reader, not per-line json.loads: the row-by-row
+    # dict version of this resource took over 6 minutes to load ~5M events;
+    # this reads and loads the same data in a small fraction of that, and
+    # infers the schema directly from the file rather than a maintained list.
+    table = pa_json.read_json(path, parse_options=_PARSE_OPTIONS)
+    n = table.num_rows
     partition_date = _partition_date(path)
-    columns: dict[str, list] = {name: [] for name in _COLUMNS}
-    campaign_values: list[str | None] = []
-    has_campaign_field = False
-
-    with Path(path).open(encoding="utf-8") as f:
-        for line in f:
-            event = json.loads(line)
-            for name in _COLUMNS:
-                if name == "geo":
-                    columns["geo"].append(json.dumps(event["geo"]))
-                else:
-                    columns[name].append(event.get(name))
-            if "utm_campaign" in event:
-                has_campaign_field = True
-            campaign_values.append(event.get("utm_campaign"))
-
-    n = len(columns["event_id"])
-    if has_campaign_field:
-        # Only added when the source data actually carries the key -- a file
-        # entirely before the schema-change date has no utm_campaign column
-        # at all here, matching the source exactly, rather than a synthetic
-        # all-null column dlt can't infer a type from.
-        columns["utm_campaign"] = campaign_values
-    columns["_partition_date"] = [partition_date] * n
-    columns["_loaded_at"] = [loaded_at] * n
-    columns["_source_name"] = ["web_events"] * n
-    columns["_load_id"] = [load_id] * n
-    return pa.table(columns)
+    return (
+        table.append_column(
+            "_partition_date", pa.array([partition_date] * n, type=pa.string())
+        )
+        .append_column("_loaded_at", pa.array([loaded_at] * n, type=pa.string()))
+        .append_column("_source_name", pa.array(["web_events"] * n, type=pa.string()))
+        .append_column("_load_id", pa.array([load_id] * n, type=pa.string()))
+    )
 
 
 def _read_partitions(load_id: str, loaded_at: str):
@@ -87,12 +68,13 @@ def halcyon_web_events_source(load_id: str, loaded_at: str):
     # (AE-05's nested-field decision). `channel`/`device` are NOT nested here
     # even though they're also event attributes -- they're already documented
     # top-level dimensions in the bus matrix (docs/data-model.md), so nesting
-    # them would silently break that design.
+    # them would silently break that design. dlt maps a pyarrow struct column
+    # to its own `json` data type automatically; `max_table_nesting=0` is what
+    # tells it to do that instead of flattening the struct into `geo__country`.
     @dlt.resource(
         name="web_events",
         write_disposition="append",
         primary_key="event_id",
-        columns={"geo": {"data_type": "json"}},
         schema_contract={"columns": "evolve", "data_type": "freeze"},
         max_table_nesting=0,
     )
