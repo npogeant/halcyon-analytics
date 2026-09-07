@@ -1,0 +1,45 @@
+version: 2
+
+models:
+  - name: stg_catalog__products
+    description: Product catalog, one row per product.
+    columns:
+      - name: product_id
+        description: Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: name
+        description: Product name.
+      - name: category
+        description: Product category.
+      - name: created_date
+        description: Product creation date.
+      - name: loaded_at
+        description: When this row was loaded into raw.
+
+  - name: stg_catalog__product_prices
+    description: Append-only price history, one row per price change.
+    columns:
+      - name: product_id
+        description: Foreign key to stg_catalog__products.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_catalog__products')
+                field: product_id
+      - name: price_amount_usd
+        description: Price in decimal USD as of `effective_date`.
+      - name: effective_date
+        description: Date this price took effect.
+        data_tests:
+          - not_null
+      - name: loaded_at
+        description: When this row was loaded into raw.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - product_id
+              - effective_date

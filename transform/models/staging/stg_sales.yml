@@ -1,0 +1,56 @@
+version: 2
+
+models:
+  - name: stg_sales__orders
+    description: >
+      One row per order, deduplicated (see transform/models/staging/README.md for the tie-break rule) --
+      the injected duplicate-order_id defect from raw does not survive into this model.
+    columns:
+      - name: order_id
+        description: Primary key. Unique here (raw is not) -- the dedup this model performs.
+        data_tests:
+          - unique
+          - not_null
+      - name: customer_id
+        description: Foreign key to stg_crm__customers. Null on the injected null-customer_id defect (left as-is; a contract concern for AE-09, not resolved here).
+      - name: order_date
+        description: Date the order was placed.
+        data_tests:
+          - not_null
+      - name: status
+        description: Order lifecycle status.
+      - name: total_amount_usd
+        description: Order total in decimal USD.
+      - name: loaded_at
+        description: When this row was loaded into raw.
+
+  - name: stg_sales__order_items
+    description: One row per order line item.
+    columns:
+      - name: order_item_id
+        description: Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: order_id
+        description: Foreign key to stg_sales__orders.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_sales__orders')
+                field: order_id
+      - name: product_id
+        description: Foreign key to stg_catalog__products.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_catalog__products')
+                field: product_id
+      - name: quantity
+        description: Units ordered.
+      - name: unit_price_usd
+        description: Unit price in decimal USD, as of the order date.
+      - name: loaded_at
+        description: When this row was loaded into raw.

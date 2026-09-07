@@ -1,0 +1,56 @@
+version: 2
+
+models:
+  - name: stg_billing__payments
+    description: One row per payment, order-based or subscription-based.
+    columns:
+      - name: payment_id
+        description: Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: customer_id
+        description: >
+          Foreign key to stg_crm__customers. Null on payments whose order carried the injected
+          null-customer_id defect (propagated from raw.orders, not resolved here).
+      - name: order_id
+        description: Foreign key to stg_sales__orders. Null for subscription payments.
+      - name: subscription_id
+        description: Foreign key to stg_subscriptions__subscriptions. Null for order payments.
+      - name: amount_usd
+        description: Payment amount in decimal USD, converted from raw's integer cents via `cents_to_decimal()`.
+        data_tests:
+          - not_null
+      - name: method
+        description: Payment method.
+      - name: paid_date
+        description: Payment date.
+      - name: loaded_at
+        description: When this row was loaded into raw.
+
+  - name: stg_billing__refunds
+    description: One row per refund.
+    columns:
+      - name: refund_id
+        description: Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: payment_id
+        description: Foreign key to stg_billing__payments.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_billing__payments')
+                field: payment_id
+      - name: amount_usd
+        description: Refund amount in decimal USD, converted from raw's integer cents via `cents_to_decimal()`.
+        data_tests:
+          - not_null
+      - name: reason
+        description: Refund reason code.
+      - name: refunded_date
+        description: Refund date.
+      - name: loaded_at
+        description: When this row was loaded into raw.

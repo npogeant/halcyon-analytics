@@ -1,0 +1,23 @@
+version: 2
+
+models:
+  - name: stg_support__support_tickets
+    description: One row per support ticket, from a hand-maintained CSV export.
+    columns:
+      - name: ticket_id
+        description: Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: customer_id
+        description: Foreign key to stg_crm__customers.
+      - name: subject
+        description: Ticket subject line.
+      - name: status
+        description: >
+          Free-text status, casing as sent by the source (e.g. "Open"/"open"/"OPEN") -- not yet normalized
+          into a controlled vocabulary. That's AE-15's scope.
+      - name: created_date
+        description: Ticket creation date.
+      - name: loaded_at
+        description: When this row was loaded into raw.

@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: stg_marketing__marketing_spend
+    description: Daily spend by channel.
+    columns:
+      - name: spend_date
+        description: Spend date.
+        data_tests:
+          - not_null
+      - name: channel
+        description: Marketing channel.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["paid_search", "paid_social", "email", "affiliate", "display", "organic"]
+      - name: spend_amount_usd
+        description: Spend amount in decimal USD. Raw's `currency` column is dropped -- checked to always be "USD" in this dataset, so the unit is named in the column instead.
+      - name: loaded_at
+        description: When this row was loaded into raw.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - spend_date
+              - channel

@@ -3,5 +3,8 @@ halcyon:
   outputs:
     dev:
       type: duckdb
-      path: "{{ env_var('DBT_DUCKDB_PATH', '../data/halcyon.duckdb') }}"
+      # Relative to wherever `dbt` is invoked from (the Makefile always runs it
+      # from the repo root via --project-dir/--profiles-dir), not relative to
+      # this file's own location.
+      path: "{{ env_var('DBT_DUCKDB_PATH', 'data/halcyon.duckdb') }}"
       threads: 4

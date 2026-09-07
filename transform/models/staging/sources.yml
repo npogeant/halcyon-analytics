@@ -1,0 +1,221 @@
+version: 2
+
+sources:
+  - name: raw
+    description: >
+      The immutable raw layer loaded by `ingestion/` (AE-04 relational sources via dlt, AE-05 web_events
+      via dlt). Nothing here is renamed, cast for meaning, or filtered — see docs/adr/0003-elt-boundary.md
+      for what ingestion is and isn't allowed to do to this data before it lands.
+    schema: raw
+    loader: dlt
+    loaded_at_field: _loaded_at
+
+    tables:
+      - name: customers
+        description: >
+          Monthly full-table snapshots of every customer, appended (not merged) so the full attribute
+          history survives in raw for AE-10's dbt snapshot to build dim_customer from. Carries both the
+          pre- and post-schema-change column shapes: `marketing_segment` (pre 2025-09-01) and `segment` +
+          `consent_flag` (2025-09-01 onward) coexist in the same table.
+        loaded_at_field: _loaded_at
+        # No freshness block here -- that's AE-08's scope, not this issue's.
+        columns:
+          - name: customer_id
+            description: Natural key. Not unique in this table -- one row per customer per monthly snapshot.
+          - name: email
+            description: Customer email at the time of the snapshot.
+          - name: country
+            description: ISO-ish country code, as of the snapshot.
+          - name: plan_tier
+            description: Customer-level segmentation tier (free/starter/growth/enterprise) -- distinct from `subscriptions.plan`, see docs/data-model.md.
+          - name: acquisition_channel
+            description: Fixed at signup, never revisited.
+          - name: created_at
+            description: Customer signup date.
+          - name: updated_at
+            description: Date of the most recent attribute change; also this table's dlt incremental cursor.
+          - name: marketing_segment
+            description: Marketing segment column name used before the 2025-09-01 schema change. Null on rows loaded under the new schema.
+          - name: segment
+            description: Marketing segment column name used from 2025-09-01 onward. Null on rows loaded under the old schema.
+          - name: consent_flag
+            description: Added in the same 2025-09-01 schema change as `segment`. Null on rows loaded under the old schema.
+
+      - name: products
+        description: Product catalog, current-state (merge disposition).
+        columns:
+          - name: product_id
+            description: Primary key.
+          - name: name
+            description: Product name.
+          - name: category
+            description: Product category.
+          - name: created_at
+            description: Product creation date.
+
+      - name: product_prices
+        description: >
+          Append-only price history. Every price change is a new, immutable row -- the reason SCD2 exists
+          for dim_product (AE-11).
+        columns:
+          - name: product_id
+            description: Foreign key to products.
+          - name: price_amount
+            description: Price in decimal USD as of `effective_date`.
+          - name: effective_date
+            description: Date this price took effect.
+
+      - name: orders
+        description: >
+          One row per order. Append-only on purpose: the source injects a ~0.1% duplicate `order_id`
+          defect that raw preserves faithfully -- deduplication happens in staging (this issue), not
+          ingestion.
+        columns:
+          - name: order_id
+            description: Natural key. Not unique in raw -- see the duplicate-order defect above.
+          - name: customer_id
+            description: Foreign key to customers. Null on ~0.2% of rows (injected defect).
+          - name: order_date
+            description: Date the order was placed.
+          - name: status
+            description: Order lifecycle status.
+          - name: total_amount
+            description: Order total in decimal USD.
+
+      - name: order_items
+        description: One row per order line item. Immutable once written.
+        columns:
+          - name: order_item_id
+            description: Primary key.
+          - name: order_id
+            description: Foreign key to orders.
+          - name: product_id
+            description: Foreign key to products.
+          - name: quantity
+            description: Units ordered.
+          - name: unit_price
+            description: Unit price in decimal USD, as of the order date.
+
+      - name: subscriptions
+        description: One row per subscription, current-state (merge disposition).
+        columns:
+          - name: subscription_id
+            description: Primary key.
+          - name: customer_id
+            description: Foreign key to customers.
+          - name: plan
+            description: Billed plan (starter/growth/enterprise) -- distinct from `customers.plan_tier`, see docs/data-model.md.
+          - name: started_at
+            description: Subscription start date.
+          - name: status
+            description: Current lifecycle status.
+          - name: updated_at
+            description: Date of the most recent lifecycle event; also this table's dlt incremental cursor.
+
+      - name: subscription_events
+        description: Append-only subscription lifecycle event log.
+        columns:
+          - name: subscription_event_id
+            description: Primary key.
+          - name: subscription_id
+            description: Foreign key to subscriptions.
+          - name: event_type
+            description: One of created/trial_ended/upgraded/downgraded/paused/resumed/cancelled.
+          - name: event_at
+            description: Event timestamp.
+
+      - name: payments
+        description: >
+          One row per payment, order-based or subscription-based. Amounts are stored in integer cents in
+          this source, unlike orders/product_prices which store decimal dollars -- an injected defect
+          resolved by this issue's `cents_to_decimal()` macro.
+        columns:
+          - name: payment_id
+            description: Primary key.
+          - name: customer_id
+            description: Foreign key to customers.
+          - name: order_id
+            description: Foreign key to orders. Null for subscription payments.
+          - name: subscription_id
+            description: Foreign key to subscriptions. Null for order payments.
+          - name: amount_cents
+            description: Payment amount in integer cents.
+          - name: method
+            description: Payment method.
+          - name: paid_at
+            description: Payment date.
+
+      - name: refunds
+        description: One row per refund. Same cents-vs-decimal defect as payments.
+        columns:
+          - name: refund_id
+            description: Primary key.
+          - name: payment_id
+            description: Foreign key to payments.
+          - name: amount_cents
+            description: Refund amount in integer cents.
+          - name: refunded_at
+            description: Refund date.
+          - name: reason
+            description: Refund reason code.
+
+      - name: support_tickets
+        description: >
+          A hand-maintained CSV export: inconsistent `status` casing and free text, tolerated but not
+          cleaned by ingestion (AE-06). Status normalization into a controlled vocabulary is AE-15's scope.
+        columns:
+          - name: ticket_id
+            description: Primary key.
+          - name: customer_id
+            description: Foreign key to customers.
+          - name: subject
+            description: Ticket subject line.
+          - name: status
+            description: Free-text status, inconsistent casing (e.g. "Open", "open", "OPEN").
+          - name: created_at
+            description: Ticket creation date.
+
+      - name: marketing_spend
+        description: Daily spend by channel, at a different grain than orders (day x channel, not per order).
+        columns:
+          - name: date
+            description: Spend date.
+          - name: channel
+            description: Marketing channel.
+          - name: spend
+            description: Spend amount, decimal, in the currency named by the `currency` column.
+          - name: currency
+            description: Always USD in this dataset.
+
+      - name: web_events
+        description: >
+          One row per raw web/app event, loaded from partitioned JSONL. `geo` is a nested JSON object
+          (AE-05's flatten-vs-JSON decision). ~2% of events arrive 1-3 days late relative to
+          `_partition_date`; `utm_campaign` only exists on events from 2025-11-01 onward (AE-05's
+          schema-evolution defect).
+        loaded_at_field: _partition_date
+        columns:
+          - name: event_id
+            description: Primary key.
+          - name: customer_id
+            description: Foreign key to customers. Null for anonymous visitors (~30% of events).
+          - name: session_id
+            description: Browser/app session identifier.
+          - name: event_type
+            description: One of page_view/add_to_cart/checkout_started/checkout_completed.
+          - name: event_at
+            description: >
+              Event timestamp as sent by the client -- mixed naive and UTC-suffixed formats (injected
+              defect, resolved by `to_utc()` in staging).
+          - name: product_id
+            description: Foreign key to products. Only set on product-related event types.
+          - name: url
+            description: Page path.
+          - name: channel
+            description: Attribution channel for this specific event.
+          - name: device
+            description: Device type.
+          - name: geo
+            description: "Nested JSON attribute bag, currently just {\"country\": ...}."
+          - name: utm_campaign
+            description: Campaign attribution. Column only exists on events from 2025-11-01 onward.
