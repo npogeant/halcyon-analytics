@@ -1,0 +1,34 @@
+version: 2
+
+models:
+  - name: stg_crm__customers
+    description: >
+      One row per customer per monthly snapshot (not deduplicated to current-state -- AE-10's dbt snapshot
+      builds dim_customer from this). `segment` coalesces the pre/post schema-change columns from raw.
+    columns:
+      - name: customer_id
+        description: Natural key. Not unique in this model -- see model description.
+        data_tests:
+          - not_null
+      - name: email
+        description: Customer email as of the snapshot.
+      - name: country
+        description: Country code as of the snapshot.
+      - name: plan_tier
+        description: Customer-level segmentation tier -- distinct from `stg_subscriptions__subscriptions.plan`.
+      - name: acquisition_channel
+        description: Fixed at signup, never revisited.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["paid_search", "paid_social", "email", "affiliate", "display", "organic"]
+      - name: segment
+        description: Marketing segment, coalesced from raw's `marketing_segment`/`segment` schema-change columns.
+      - name: consent_flag
+        description: Null on rows loaded under the pre-schema-change format.
+      - name: created_date
+        description: Customer signup date.
+      - name: updated_date
+        description: Date of the most recent attribute change.
+      - name: loaded_at
+        description: When this row was loaded into raw.

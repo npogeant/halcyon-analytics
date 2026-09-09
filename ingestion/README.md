@@ -179,6 +179,15 @@ Verified during development, for both `relational` and `web_events`:
   down together and recovers exactly like the simple case: no duplicate or corrupted rows, from `dlt`'s own
   load-package atomicity.
 
+**dlt's incremental state lives outside the destination file, under `~/.dlt/pipelines/`, not inside
+`data/halcyon.duckdb`.** Deleting the duckdb file alone does not reset it: `rm -rf data && make demo` was
+found, during `AE-07`'s testing, to silently skip re-extracting `web_events` entirely (its cursor was
+already at the source's maximum possible partition date from an earlier run, and the source's date range
+never changes since the generator is deterministic) — the fresh destination file ended up simply missing
+the `raw.web_events` table, since dlt didn't create it for zero extracted rows. `make clean` now also
+removes `~/.dlt/pipelines/halcyon_relational` and `~/.dlt/pipelines/halcyon_web_events`, so a clean-slate
+run doesn't depend on remembering this by hand.
+
 ## Raw layer discipline
 
 Nothing in `ingestion/` renames columns, converts currency, or filters rows — that's staging's job

@@ -1,0 +1,41 @@
+version: 2
+
+models:
+  - name: stg_events__web_events
+    description: One row per raw web/app event.
+    columns:
+      - name: event_id
+        description: Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: customer_id
+        description: Foreign key to stg_crm__customers. Null for anonymous visitors (~30% of events).
+      - name: session_id
+        description: Browser/app session identifier.
+      - name: event_type
+        description: Event type.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["page_view", "add_to_cart", "checkout_started", "checkout_completed"]
+      - name: event_at
+        description: Event timestamp, normalized to UTC via `to_utc()`.
+        data_tests:
+          - not_null
+      - name: product_id
+        description: Foreign key to stg_catalog__products. Only set on product-related event types.
+      - name: url
+        description: Page path.
+      - name: channel
+        description: Attribution channel for this specific event.
+      - name: device
+        description: Device type.
+      - name: geo_country
+        description: Extracted from raw's nested `geo` JSON object via `json_extract_string`.
+      - name: utm_campaign
+        description: Campaign attribution. Null for events before 2025-11-01 (source schema-evolution boundary).
+      - name: partition_date
+        description: The file partition date events were loaded from -- distinct from `event_at`; comparing the two identifies late-arriving events (raw README, AE-05).
+      - name: loaded_at
+        description: When this row was loaded into raw.

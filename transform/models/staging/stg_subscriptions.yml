@@ -1,0 +1,58 @@
+version: 2
+
+models:
+  - name: stg_subscriptions__subscriptions
+    description: One row per subscription, current-state.
+    columns:
+      - name: subscription_id
+        description: Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: customer_id
+        description: Foreign key to stg_crm__customers.
+        data_tests:
+          - not_null
+      - name: plan
+        description: Billed plan -- distinct from stg_crm__customers.plan_tier.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["starter", "growth", "enterprise"]
+      - name: status
+        description: Current lifecycle status.
+      - name: started_date
+        description: Subscription start date.
+      - name: updated_date
+        description: Date of the most recent lifecycle event.
+      - name: loaded_at
+        description: When this row was loaded into raw.
+
+  - name: stg_subscriptions__subscription_events
+    description: Append-only subscription lifecycle event log.
+    columns:
+      - name: subscription_event_id
+        description: Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: subscription_id
+        description: Foreign key to stg_subscriptions__subscriptions.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_subscriptions__subscriptions')
+                field: subscription_id
+      - name: event_type
+        description: Lifecycle event type.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["created", "trial_ended", "upgraded", "downgraded", "paused", "resumed", "cancelled"]
+      - name: event_date
+        description: Event date.
+        data_tests:
+          - not_null
+      - name: loaded_at
+        description: When this row was loaded into raw.
