@@ -8,7 +8,12 @@ sources:
       for what ingestion is and isn't allowed to do to this data before it lands.
     schema: raw
     loader: dlt
-    loaded_at_field: _loaded_at
+    # An expression, not a bare column: web_events._loaded_at is a VARCHAR (the
+    # pyarrow-based AE-05 pipeline never types it), while every relational
+    # table's _loaded_at is already TIMESTAMPTZ. One cast handles both without
+    # needing a per-table override, and freshness math needs a real timestamp
+    # either way.
+    loaded_at_field: "CAST(_loaded_at AS TIMESTAMPTZ)"
 
     tables:
       - name: customers
@@ -17,8 +22,12 @@ sources:
           history survives in raw for AE-10's dbt snapshot to build dim_customer from. Carries both the
           pre- and post-schema-change column shapes: `marketing_segment` (pre 2025-09-01) and `segment` +
           `consent_flag` (2025-09-01 onward) coexist in the same table.
-        loaded_at_field: _loaded_at
-        # No freshness block here -- that's AE-08's scope, not this issue's.
+        # CRM data: not revenue-critical by itself but everything downstream
+        # (dim_customer, every fact's customer join) depends on it, so it
+        # still deserves a same-day SLA.
+        freshness:
+          warn_after: { count: 24, period: hour }
+          error_after: { count: 48, period: hour }
         columns:
           - name: customer_id
             description: Natural key. Not unique in this table -- one row per customer per monthly snapshot.
@@ -43,6 +52,11 @@ sources:
 
       - name: products
         description: Product catalog, current-state (merge disposition).
+        # Catalog data changes rarely -- a stale product feed for a day is an
+        # inconvenience, not an incident.
+        freshness:
+          warn_after: { count: 24, period: hour }
+          error_after: { count: 72, period: hour }
         columns:
           - name: product_id
             description: Primary key.
@@ -57,6 +71,11 @@ sources:
         description: >
           Append-only price history. Every price change is a new, immutable row -- the reason SCD2 exists
           for dim_product (AE-11).
+        # Same reasoning as products: price changes are infrequent, planned
+        # events, not something that needs same-hour detection.
+        freshness:
+          warn_after: { count: 24, period: hour }
+          error_after: { count: 72, period: hour }
         columns:
           - name: product_id
             description: Foreign key to products.
@@ -68,8 +87,12 @@ sources:
       - name: orders
         description: >
           One row per order. Append-only on purpose: the source injects a ~0.1% duplicate `order_id`
-          defect that raw preserves faithfully -- deduplication happens in staging (this issue), not
-          ingestion.
+          defect that raw preserves faithfully -- deduplication happens in staging (AE-07), not ingestion.
+        # Revenue-critical: fct_orders and every dashboard reading it depend
+        # on same-day accuracy.
+        freshness:
+          warn_after: { count: 6, period: hour }
+          error_after: { count: 24, period: hour }
         columns:
           - name: order_id
             description: Natural key. Not unique in raw -- see the duplicate-order defect above.
@@ -84,6 +107,11 @@ sources:
 
       - name: order_items
         description: One row per order line item. Immutable once written.
+        # Same SLA as orders -- they're loaded together and feed the same
+        # revenue-critical facts.
+        freshness:
+          warn_after: { count: 6, period: hour }
+          error_after: { count: 24, period: hour }
         columns:
           - name: order_item_id
             description: Primary key.
@@ -98,6 +126,11 @@ sources:
 
       - name: subscriptions
         description: One row per subscription, current-state (merge disposition).
+        # Billing-adjacent: MRR and the new/expansion/contraction/churn bridge
+        # depend on subscription state being close to current.
+        freshness:
+          warn_after: { count: 12, period: hour }
+          error_after: { count: 24, period: hour }
         columns:
           - name: subscription_id
             description: Primary key.
@@ -114,6 +147,11 @@ sources:
 
       - name: subscription_events
         description: Append-only subscription lifecycle event log.
+        # Same SLA as subscriptions -- loaded together, same downstream
+        # sensitivity.
+        freshness:
+          warn_after: { count: 12, period: hour }
+          error_after: { count: 24, period: hour }
         columns:
           - name: subscription_event_id
             description: Primary key.
@@ -128,7 +166,12 @@ sources:
         description: >
           One row per payment, order-based or subscription-based. Amounts are stored in integer cents in
           this source, unlike orders/product_prices which store decimal dollars -- an injected defect
-          resolved by this issue's `cents_to_decimal()` macro.
+          resolved by AE-07's `cents_to_decimal()` macro.
+        # Financial data: the tightest SLA in this project. A stale payments
+        # feed means revenue reporting is silently wrong, not just late.
+        freshness:
+          warn_after: { count: 6, period: hour }
+          error_after: { count: 24, period: hour }
         columns:
           - name: payment_id
             description: Primary key.
@@ -147,6 +190,11 @@ sources:
 
       - name: refunds
         description: One row per refund. Same cents-vs-decimal defect as payments.
+        # Same SLA as payments -- also financial data, also feeds AE-28's
+        # anomaly monitoring on the refund-rate metric.
+        freshness:
+          warn_after: { count: 6, period: hour }
+          error_after: { count: 24, period: hour }
         columns:
           - name: refund_id
             description: Primary key.
@@ -163,6 +211,12 @@ sources:
         description: >
           A hand-maintained CSV export: inconsistent `status` casing and free text, tolerated but not
           cleaned by ingestion (AE-06). Status normalization into a controlled vocabulary is AE-15's scope.
+        # The most lenient SLA in this project, on purpose -- a human exports
+        # this file, not a system, and a payments feed and a hand-maintained
+        # CSV do not deserve the same SLA.
+        freshness:
+          warn_after: { count: 48, period: hour }
+          error_after: { count: 7, period: day }
         columns:
           - name: ticket_id
             description: Primary key.
@@ -177,6 +231,12 @@ sources:
 
       - name: marketing_spend
         description: Daily spend by channel, at a different grain than orders (day x channel, not per order).
+        # A daily batch feed by nature (day x channel grain); CAC isn't an
+        # intraday metric, so the SLA matches the feed's own cadence rather
+        # than demanding a resolution the source was never going to have.
+        freshness:
+          warn_after: { count: 24, period: hour }
+          error_after: { count: 48, period: hour }
         columns:
           - name: date
             description: Spend date.
@@ -193,7 +253,18 @@ sources:
           (AE-05's flatten-vs-JSON decision). ~2% of events arrive 1-3 days late relative to
           `_partition_date`; `utm_campaign` only exists on events from 2025-11-01 onward (AE-05's
           schema-evolution defect).
-        loaded_at_field: _partition_date
+        # Deliberately NOT loaded_at_field: _partition_date here, even though that field exists on this
+        # table and AE-05 uses it as the dlt incremental cursor. _partition_date is a business/source date
+        # bounded by the generator's fixed history window -- freshness needs wall-clock ingestion time
+        # (the source-level default above), or every check here would report the same fixed staleness
+        # forever, regardless of how recently the pipeline actually ran.
+        #
+        # High volume, feeds the funnel/conversion metrics (business question 7) most directly -- the
+        # tightest SLA in this project, tighter even than payments, since a stale event stream breaks a
+        # real-time-feeling product surface, not just a batch report.
+        freshness:
+          warn_after: { count: 3, period: hour }
+          error_after: { count: 12, period: hour }
         columns:
           - name: event_id
             description: Primary key.

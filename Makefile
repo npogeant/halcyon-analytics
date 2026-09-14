@@ -12,6 +12,7 @@ ingest:
 	uv run python -m ingestion
 
 build:
+	uv run dbt source freshness --project-dir transform --profiles-dir transform
 	uv run dbt build --project-dir transform --profiles-dir transform
 
 test:
