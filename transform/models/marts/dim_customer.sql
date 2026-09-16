@@ -1,11 +1,6 @@
-{{
-  config(
-    materialized='incremental',
-    unique_key='customer_id',
-    on_schema_change='fail',
-    contract={'enforced': true}
-  )
-}}
+-- Model config (materialized, unique_key, on_schema_change, contract) lives in
+-- dim_customer.yml, not here -- keeps everything about this model's contract
+-- in one file, next to the column types it governs.
 
 -- MINIMAL placeholder: current state per customer only, no SCD2 history yet.
 -- AE-10 replaces this with the real Type 2 version, built on a dbt snapshot.
