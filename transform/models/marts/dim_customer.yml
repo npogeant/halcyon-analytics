@@ -1,0 +1,47 @@
+version: 2
+
+models:
+  - name: dim_customer
+    description: >
+      MINIMAL placeholder dim_customer: current state per customer, no attribute history yet.
+      Deliberately scoped this way for `AE-09` -- exists to have a real mart to enforce a contract
+      on. `AE-10` replaces this with the real SCD Type 2 version, built on a dbt snapshot, with
+      `valid_from`/`valid_to`/`is_current` and an unknown-member row. No `foreign_key` constraint
+      here since nothing references this table yet -- that lands with the first fact table (`AE-12`).
+    config:
+      materialized: incremental
+      unique_key: customer_id
+      on_schema_change: fail
+      contract:
+        enforced: true
+    columns:
+      - name: customer_id
+        data_type: varchar
+        description: Natural key, one row per customer (current state only, not full history).
+        constraints:
+          - type: primary_key
+          - type: not_null
+      - name: email
+        data_type: varchar
+        description: Customer email as of the latest known snapshot.
+      - name: country
+        data_type: varchar
+        description: Country code as of the latest known snapshot.
+      - name: plan_tier
+        data_type: varchar
+        description: Customer-level segmentation tier -- distinct from `plan` on subscriptions.
+      - name: acquisition_channel
+        data_type: varchar
+        description: Fixed at signup, never revisited.
+      - name: segment
+        data_type: varchar
+        description: Marketing segment, coalesced from raw's pre/post schema-change columns already in staging.
+      - name: consent_flag
+        data_type: boolean
+        description: Null for customers whose latest snapshot predates the 2025-09-01 schema change.
+      - name: created_date
+        data_type: date
+        description: Customer signup date.
+      - name: updated_date
+        data_type: date
+        description: Date of the most recent known attribute change.

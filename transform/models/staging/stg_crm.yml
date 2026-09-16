@@ -3,8 +3,26 @@ version: 2
 models:
   - name: stg_crm__customers
     description: >
-      One row per customer per monthly snapshot (not deduplicated to current-state -- AE-10's dbt snapshot
-      builds dim_customer from this). `segment` coalesces the pre/post schema-change columns from raw.
+      One row per customer per monthly snapshot (not deduplicated to current-state -- AE-09's minimal
+      dim_customer dedupes it to current state directly; AE-10's dbt snapshot will later build the real
+      SCD2 version from this same model). `segment` coalesces the pre/post schema-change columns from raw.
+    data_tests:
+      # Asserts this model's own output shape hasn't silently drifted -- the
+      # earliest layer that would notice if the coalesce in this model's SQL
+      # ever stopped matching what raw.customers actually sends (AE-09).
+      - dbt_expectations.expect_table_columns_to_match_set:
+          arguments:
+            column_list:
+              - customer_id
+              - email
+              - country
+              - plan_tier
+              - acquisition_channel
+              - segment
+              - consent_flag
+              - created_date
+              - updated_date
+              - loaded_at
     columns:
       - name: customer_id
         description: Natural key. Not unique in this model -- see model description.
