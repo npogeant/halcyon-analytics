@@ -1,0 +1,58 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: >
+      One row per calendar day, 2024-09-01 through 2027-08-31 (the generator's full history plus one
+      year forward, per AE-10's scope). `is_holiday` covers US federal holidays only -- documented as
+      the project's "main market" since nothing else declares one.
+    columns:
+      - name: date_key
+        data_type: date
+        description: Primary key. One row per calendar day.
+        constraints:
+          - type: primary_key
+          - type: not_null
+      - name: year
+        data_type: bigint
+      - name: quarter
+        data_type: bigint
+      - name: month
+        data_type: bigint
+      - name: month_name
+        data_type: varchar
+      - name: day_of_month
+        data_type: bigint
+      - name: iso_day_of_week
+        data_type: bigint
+        description: 1 = Monday .. 7 = Sunday (ISO 8601).
+      - name: day_name
+        data_type: varchar
+      - name: iso_week
+        data_type: bigint
+      - name: is_weekend
+        data_type: boolean
+      - name: fiscal_year
+        data_type: bigint
+        description: Assumed to align with the calendar year (Jan-Dec) -- a documented simplification.
+      - name: fiscal_quarter
+        data_type: bigint
+        description: Same assumption as fiscal_year.
+      - name: is_holiday
+        data_type: boolean
+      - name: holiday_name
+        data_type: varchar
+        description: Null on non-holiday days.
+
+seeds:
+  - name: us_federal_holidays
+    description: >
+      US federal holiday dates for 2024-2027, generated programmatically (Python's `calendar` module,
+      not hand-typed) to avoid getting an "nth weekday of month" rule wrong by hand.
+    columns:
+      - name: holiday_date
+        data_type: date
+        constraints:
+          - type: not_null
+      - name: holiday_name
+        data_type: varchar
