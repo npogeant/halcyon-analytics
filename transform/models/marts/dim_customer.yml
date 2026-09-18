@@ -3,45 +3,69 @@ version: 2
 models:
   - name: dim_customer
     description: >
-      MINIMAL placeholder dim_customer: current state per customer, no attribute history yet.
-      Deliberately scoped this way for `AE-09` -- exists to have a real mart to enforce a contract
-      on. `AE-10` replaces this with the real SCD Type 2 version, built on a dbt snapshot, with
-      `valid_from`/`valid_to`/`is_current` and an unknown-member row. No `foreign_key` constraint
-      here since nothing references this table yet -- that lands with the first fact table (`AE-12`).
+      Type 2 slowly changing dimension: one row per historical version of a customer, not one row
+      per customer. Answers "what was this customer's plan tier at the time of the order," not
+      just "what is it now." Built on int_customer_history's one-time SQL reconstruction of the
+      source's pre-existing history (see that model's header comment); a real `dbt snapshot`
+      (snapshots/customers_snapshot.sql) is configured separately to capture any future change.
+      Includes an unknown-member row (customer_key = '-1') so a fact row with a missing or
+      unresolvable customer still joins to something.
     config:
-      materialized: incremental
-      unique_key: customer_id
-      on_schema_change: fail
+      materialized: table
       contract:
         enforced: true
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - customer_id
+              - valid_from
     columns:
-      - name: customer_id
+      - name: customer_key
         data_type: varchar
-        description: Natural key, one row per customer (current state only, not full history).
+        description: Surrogate key, generate_surrogate_key([customer_id, valid_from]). '-1' for the unknown member.
         constraints:
           - type: primary_key
           - type: not_null
+      - name: customer_id
+        data_type: varchar
+        description: Natural key. Not unique on its own -- one row per historical version. 'unknown' for the unknown member.
+        constraints:
+          - type: not_null
       - name: email
         data_type: varchar
-        description: Customer email as of the latest known snapshot.
+        description: Customer email as of this version.
       - name: country
         data_type: varchar
-        description: Country code as of the latest known snapshot.
+        description: Country code as of this version.
       - name: plan_tier
         data_type: varchar
-        description: Customer-level segmentation tier -- distinct from `plan` on subscriptions.
+        description: Customer-level segmentation tier as of this version -- distinct from `plan` on subscriptions.
       - name: acquisition_channel
         data_type: varchar
-        description: Fixed at signup, never revisited.
+        description: Fixed at signup, never revisited -- same across every version of a customer.
       - name: segment
         data_type: varchar
-        description: Marketing segment, coalesced from raw's pre/post schema-change columns already in staging.
+        description: Marketing segment as of this version.
       - name: consent_flag
         data_type: boolean
-        description: Null for customers whose latest snapshot predates the 2025-09-01 schema change.
+        description: >
+          Same across every version of a customer (verified never to vary once known -- see
+          assert_consent_flag_is_invariant). Null for customers whose entire history predates the
+          2025-09-01 schema change.
       - name: created_date
         data_type: date
-        description: Customer signup date.
-      - name: updated_date
+        description: Customer signup date. Same across every version of a customer.
+      - name: valid_from
         data_type: date
-        description: Date of the most recent known attribute change.
+        description: Date this version became true. 1900-01-01 for the unknown member.
+        constraints:
+          - type: not_null
+      - name: valid_to
+        data_type: date
+        description: Date this version stopped being true (exclusive). Null for the current version, including the unknown member.
+      - name: is_current
+        data_type: boolean
+        description: True for exactly one version per customer_id -- the one with valid_to null.
+        constraints:
+          - type: not_null

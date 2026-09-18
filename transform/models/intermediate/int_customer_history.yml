@@ -1,0 +1,29 @@
+version: 2
+
+models:
+  - name: int_customer_history
+    description: >
+      One row per customer per distinct historical version (Type 2, not yet a dimension): the
+      one-time SQL reconstruction of dim_customer's history, built from stg_crm__customers' full
+      set of monthly snapshot rows rather than a replayed dbt snapshot. See the model's header
+      comment for why. Not meant to be queried directly by consumers -- dim_customer adds the
+      surrogate key and unknown-member row on top of this.
+    columns:
+      - name: customer_id
+        description: Natural key. Not unique on its own -- one row per historical version.
+        tests:
+          - not_null
+      - name: valid_from
+        description: Date this version became true. Equal to created_date for a customer's first version.
+        tests:
+          - not_null
+      - name: valid_to
+        description: Date this version stopped being true (exclusive). Null for the current version.
+      - name: is_current
+        description: True for exactly one version per customer_id -- the one with valid_to null.
+      - name: consent_flag
+        description: >
+          Carried forward as a plain attribute, not a version-boundary column: verified to never
+          vary for a given customer once known (it just starts appearing partway through history
+          when the source column was added), so it isn't part of Type 2 change detection. See
+          assert_consent_flag_is_invariant in tests/ for the check that guards this assumption.
