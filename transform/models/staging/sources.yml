@@ -103,7 +103,15 @@ sources:
           - name: status
             description: Order lifecycle status.
           - name: total_amount
-            description: Order total in decimal USD.
+            description: Order total in decimal USD. Equal to items_total + shipping_cost - discount_amount, exactly (AE-12).
+          - name: shipping_cost
+            description: Order-level shipping cost in decimal USD. Present on every order.
+          - name: discount_code
+            description: Order-level discount code, if any. Null on the ~85% of orders with no discount applied.
+          - name: discount_amount
+            description: Order-level discount in decimal USD. 0 when discount_code is null.
+          - name: shipped_at
+            description: Date the order shipped. Null unless status is shipped or completed.
 
       - name: order_items
         description: One row per order line item. Immutable once written.

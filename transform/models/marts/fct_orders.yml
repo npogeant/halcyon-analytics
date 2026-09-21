@@ -1,0 +1,140 @@
+version: 2
+
+models:
+  - name: fct_orders
+    description: >
+      One row per order line -- grain is (order_id, order_item_id). Order-level shipping,
+      discount, and refund amounts are allocated down to this grain pro-rata by each line's share
+      of the order's gross revenue, with the rounding remainder assigned to the order's last line
+      so allocated lines always sum back to the order-level amount exactly. customer_key and
+      product_key are resolved as-of order_date against each dimension's Type 2 validity range,
+      not the dimension's current state. order_date_key and shipped_date_key are both
+      role-playing references to dim_date. order_id and status are degenerate dimensions, kept
+      directly on the fact rather than a separate dim_order table.
+    config:
+      materialized: table
+      contract:
+        enforced: true
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - order_id
+              - order_item_id
+    columns:
+      - name: order_id
+        data_type: varchar
+        description: Degenerate dimension. Not unique on its own -- one row per order line.
+        constraints:
+          - type: not_null
+      - name: order_item_id
+        data_type: varchar
+        description: Grain key, together with order_id.
+        constraints:
+          - type: not_null
+      - name: status
+        data_type: varchar
+        description: Degenerate dimension. Order lifecycle status as of the last known state.
+      - name: customer_key
+        data_type: varchar
+        description: FK to dim_customer, resolved as-of order_date. '-1' (unknown member) if unresolved.
+        constraints:
+          - type: not_null
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_customer')
+                field: customer_key
+      - name: product_key
+        data_type: varchar
+        description: FK to dim_product, resolved as-of order_date. '-1' (unknown member) if unresolved.
+        constraints:
+          - type: not_null
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_product')
+                field: product_key
+      - name: order_date_key
+        data_type: date
+        description: FK to dim_date -- role-playing reference #1 (the order date).
+        constraints:
+          - type: not_null
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: shipped_date_key
+        data_type: date
+        description: >
+          FK to dim_date -- role-playing reference #2 (the ship date). Null unless the order has
+          shipped or completed.
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: quantity
+        data_type: bigint
+        description: Units on this line.
+        constraints:
+          - type: not_null
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+      - name: gross_amount_usd
+        data_type: decimal(18, 2)
+        description: quantity * unit_price, before any adjustment.
+        constraints:
+          - type: not_null
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+      - name: discount_amount_usd
+        data_type: decimal(18, 2)
+        description: This line's allocated share of the order's discount. 0 on orders with no discount.
+        constraints:
+          - type: not_null
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+      - name: net_amount_usd
+        data_type: decimal(18, 2)
+        description: gross_amount_usd - discount_amount_usd. Excludes shipping (see shipping_amount_usd).
+        constraints:
+          - type: not_null
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+      - name: shipping_amount_usd
+        data_type: decimal(18, 2)
+        description: This line's allocated share of the order's shipping cost.
+        constraints:
+          - type: not_null
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+      - name: refunded_amount_usd
+        data_type: decimal(18, 2)
+        description: This line's allocated share of any refund against the order. 0 if unrefunded.
+        constraints:
+          - type: not_null
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+      - name: cost_amount_usd
+        data_type: decimal(18, 2)
+        description: quantity * dim_product.cost_amount (as-of order_date). 0 for the unknown member.
+        constraints:
+          - type: not_null
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"

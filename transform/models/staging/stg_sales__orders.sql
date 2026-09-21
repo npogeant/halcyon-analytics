@@ -9,6 +9,10 @@ casted as (
         cast(order_date as date) as order_date,
         status,
         cast(total_amount as decimal(18, 2)) as total_amount_usd,
+        cast(shipping_cost as decimal(18, 2)) as shipping_cost_usd,
+        discount_code,
+        cast(discount_amount as decimal(18, 2)) as discount_amount_usd,
+        cast(shipped_at as date) as shipped_date,
         cast(_loaded_at as timestamptz) as loaded_at
     from source
 ),
@@ -34,6 +38,10 @@ select
     order_date,
     status,
     total_amount_usd,
+    shipping_cost_usd,
+    discount_code,
+    discount_amount_usd,
+    shipped_date,
     loaded_at
 from deduplicated
 where _dedup_rank = 1

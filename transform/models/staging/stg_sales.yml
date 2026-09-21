@@ -20,7 +20,15 @@ models:
       - name: status
         description: Order lifecycle status.
       - name: total_amount_usd
-        description: Order total in decimal USD.
+        description: Order total in decimal USD. Equal to items_total + shipping_cost_usd - discount_amount_usd, exactly.
+      - name: shipping_cost_usd
+        description: Order-level shipping cost. Present on every order; allocated to line grain in fct_orders.
+      - name: discount_code
+        description: Order-level discount code, if any. Null on orders with no discount.
+      - name: discount_amount_usd
+        description: Order-level discount. 0 when discount_code is null; allocated to line grain in fct_orders.
+      - name: shipped_date
+        description: Date the order shipped. Null unless status is shipped or completed.
       - name: loaded_at
         description: When this row was loaded into raw.
 
