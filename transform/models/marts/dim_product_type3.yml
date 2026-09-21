@@ -1,0 +1,21 @@
+version: 2
+
+models:
+  - name: dim_product_type3
+    description: >
+      Type 3 (previous-value column) variant of dim_product, built for AE-11's SCD comparison
+      only -- not a production model, no contract enforced. One row per product, current price
+      plus one step of prior history. See docs/data-model.md for the comparison against Type 1
+      and Type 2, and this model's header comment for why it can't support a true as-of query.
+    config:
+      materialized: table
+    columns:
+      - name: product_id
+        description: Natural key, one row per product.
+        tests:
+          - not_null
+          - unique
+      - name: list_price
+        description: Current price.
+      - name: previous_list_price
+        description: The price immediately before the current one. Null for a product with only one price ever recorded.

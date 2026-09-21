@@ -1,0 +1,18 @@
+version: 2
+
+models:
+  - name: dim_product_type1
+    description: >
+      Type 1 (overwrite) variant of dim_product, built for AE-11's SCD comparison only -- not a
+      production model, no contract enforced. One row per product, current price only, no history.
+      See docs/data-model.md for the comparison against Type 2 and Type 3.
+    config:
+      materialized: table
+    columns:
+      - name: product_id
+        description: Natural key, one row per product.
+        tests:
+          - not_null
+          - unique
+      - name: list_price
+        description: Current price only. Null if a product has never had a price recorded.

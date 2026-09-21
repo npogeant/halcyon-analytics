@@ -1,0 +1,56 @@
+version: 2
+
+models:
+  - name: dim_product
+    description: >
+      Type 2 slowly changing dimension: one row per historical price version, not one row per
+      product. Answers "what was this product's list price at the time of the order," not just
+      "what is it now." Chosen as the production version dim_product for fct_orders to join
+      against -- see docs/data-model.md's SCD type comparison for the full justification, and
+      dim_product_type1/dim_product_type3 for the two alternatives it was chosen over.
+    config:
+      materialized: table
+      contract:
+        enforced: true
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - product_id
+              - valid_from
+    columns:
+      - name: product_key
+        data_type: varchar
+        description: Surrogate key, generate_surrogate_key([product_id, valid_from]).
+        constraints:
+          - type: primary_key
+          - type: not_null
+      - name: product_id
+        data_type: varchar
+        description: Natural key. Not unique on its own -- one row per historical version.
+        constraints:
+          - type: not_null
+      - name: name
+        data_type: varchar
+        description: Same across every version of a product -- products aren't renamed in this dataset.
+      - name: category
+        data_type: varchar
+        description: Same across every version of a product.
+      - name: list_price
+        data_type: decimal(18, 2)
+        description: List price as of this version.
+        constraints:
+          - type: not_null
+      - name: valid_from
+        data_type: date
+        description: Date this price took effect.
+        constraints:
+          - type: not_null
+      - name: valid_to
+        data_type: date
+        description: Date this price stopped being in effect (exclusive). Null for the current version.
+      - name: is_current
+        data_type: boolean
+        description: True for exactly one version per product_id -- the one with valid_to null.
+        constraints:
+          - type: not_null
