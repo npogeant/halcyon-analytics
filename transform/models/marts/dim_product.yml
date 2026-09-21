@@ -7,7 +7,9 @@ models:
       product. Answers "what was this product's list price at the time of the order," not just
       "what is it now." Chosen as the production version dim_product for fct_orders to join
       against -- see docs/data-model.md's SCD type comparison for the full justification, and
-      dim_product_type1/dim_product_type3 for the two alternatives it was chosen over.
+      dim_product_type1/dim_product_type3 for the two alternatives it was chosen over. Includes an
+      unknown-member row (product_key = '-1') for order lines whose order_date predates that
+      product's earliest recorded price (AE-11's finding; AE-12 is the first real consumer of it).
     config:
       materialized: table
       contract:
@@ -38,9 +40,13 @@ models:
         description: Same across every version of a product.
       - name: list_price
         data_type: decimal(18, 2)
-        description: List price as of this version.
-        constraints:
-          - type: not_null
+        description: List price as of this version. Null for the unknown member.
+      - name: cost_amount
+        data_type: decimal(18, 2)
+        description: >
+          Cost basis (COGS) as of this version. A documented assumption (60% gross margin), not
+          sourced data -- this dataset has no real cost system. See the model's header comment.
+          Null for the unknown member.
       - name: valid_from
         data_type: date
         description: Date this price took effect.

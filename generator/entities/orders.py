@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 from .. import config
 from ..dates import day_range
 from ..rng import rng_for
@@ -8,6 +10,19 @@ from .products import price_as_of
 
 STATUSES = ["placed", "paid", "shipped", "completed", "cancelled"]
 STATUS_WEIGHTS = [0.05, 0.10, 0.15, 0.65, 0.05]
+
+# An order only ships once it's reached at least the "shipped" stage.
+SHIPPED_ORDER_STATUSES = {"shipped", "completed"}
+
+SHIPPING_COST_MIN = 4.99
+SHIPPING_COST_MAX = 14.99
+
+# A minority of orders carry a discount code, each worth a fixed % off the
+# item subtotal. total_amount is items_total + shipping_cost - discount_amount
+# -- a real, non-zero adjustment for AE-12's line-grain allocation to prove
+# itself against, not an empty exercise.
+DISCOUNT_PROBABILITY = 0.15
+DISCOUNT_CODES = {"SAVE10": 0.10, "SAVE20": 0.20, "WELCOME15": 0.15}
 
 
 def generate(defects: dict, customers: dict, products: dict) -> dict:
@@ -23,6 +38,10 @@ def generate(defects: dict, customers: dict, products: dict) -> dict:
     order_date: list[str] = []
     order_status: list[str] = []
     order_total: list[float] = []
+    order_shipping_cost: list[float] = []
+    order_discount_code: list = []
+    order_discount_amount: list[float] = []
+    order_shipped_at: list = []
 
     item_id: list[str] = []
     item_order_id: list[str] = []
@@ -55,11 +74,30 @@ def generate(defects: dict, customers: dict, products: dict) -> dict:
                 item_unit_price.append(unit_price)
                 items_total += quantity * unit_price
 
+            status = rng.choice(STATUSES, p=STATUS_WEIGHTS)
+
+            shipping_cost = round(
+                float(rng.uniform(SHIPPING_COST_MIN, SHIPPING_COST_MAX)), 2
+            )
+            discount_code = None
+            discount_amount = 0.0
+            if rng.random() < DISCOUNT_PROBABILITY:
+                discount_code = rng.choice(list(DISCOUNT_CODES))
+                discount_amount = round(items_total * DISCOUNT_CODES[discount_code], 2)
+
+            shipped_at = None
+            if status in SHIPPED_ORDER_STATUSES:
+                shipped_at = (day + timedelta(days=int(rng.integers(1, 6)))).isoformat()
+
             order_id.append(oid)
             order_customer_id.append(customer_ids[buyer_idx])
             order_date.append(day.isoformat())
-            order_status.append(rng.choice(STATUSES, p=STATUS_WEIGHTS))
-            order_total.append(round(items_total, 2))
+            order_status.append(status)
+            order_total.append(round(items_total + shipping_cost - discount_amount, 2))
+            order_shipping_cost.append(shipping_cost)
+            order_discount_code.append(discount_code)
+            order_discount_amount.append(discount_amount)
+            order_shipped_at.append(shipped_at)
 
     if defects["null_customer_id"]:
         null_rate = 0.002
@@ -76,6 +114,10 @@ def generate(defects: dict, customers: dict, products: dict) -> dict:
             order_date.append(order_date[idx])
             order_status.append(order_status[idx])
             order_total.append(order_total[idx])
+            order_shipping_cost.append(order_shipping_cost[idx])
+            order_discount_code.append(order_discount_code[idx])
+            order_discount_amount.append(order_discount_amount[idx])
+            order_shipped_at.append(order_shipped_at[idx])
 
     write_parquet(
         {
@@ -84,6 +126,10 @@ def generate(defects: dict, customers: dict, products: dict) -> dict:
             "order_date": order_date,
             "status": order_status,
             "total_amount": order_total,
+            "shipping_cost": order_shipping_cost,
+            "discount_code": order_discount_code,
+            "discount_amount": order_discount_amount,
+            "shipped_at": order_shipped_at,
         },
         f"{config.OUTPUT_DIR}/orders/orders.parquet",
     )

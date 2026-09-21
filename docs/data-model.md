@@ -45,16 +45,20 @@ channel/day grain, not per product).
 
 ## 3. Fact tables: declared grain
 
-Written before implementation, per `AE-03`'s acceptance criteria — no fact table below exists yet.
+Written before implementation, per `AE-03`'s acceptance criteria. `fct_orders` has since been built in
+`AE-12` exactly as designed below.
 
 - **`fct_orders`** — one row per order line item, grain key **`(order_id, order_item_id)`** — a composite
   key, not `order_item_id` alone. The generator's `order_item_id` happens to be globally unique (it's built
   from a running counter across all orders), but that's an accident of how the generator constructs the
   string, not a guarantee a real source would make; a real line-item ID is typically order-scoped (`item 1`,
-  `item 2`, ...). The uniqueness test in `AE-12` should enforce the composite key so the model stays correct
-  if that generator detail ever changes. Refunds are allocated back to the order line pro-rata by line
-  revenue share, since the source `refunds` table only references `payment_id`, not a specific order line —
-  a modeling *choice*, not a fact the source provides.
+  `item 2`, ...). The uniqueness test in `AE-12` enforces the composite key so the model stays correct if
+  that generator detail ever changes. Shipping, order-level discounts, and refunds are all allocated back
+  to the order line the same way: pro-rata by the line's share of the order's gross revenue, with the
+  rounding remainder assigned to the order's last line so allocated lines reconcile to the order total
+  exactly, not just within a tolerance. Refunds specifically need this allocation since the source
+  `refunds` table only references `payment_id`, not a specific order line — a modeling *choice*, not a
+  fact the source provides.
 - **`fct_subscription_daily`** — one row per active subscription per calendar day (periodic snapshot),
   grain key **`(subscription_id, snapshot_date)`**. Daily, not monthly, grain so month-end MRR (question 1)
   and the new/expansion/contraction/churn bridge (question 2) can both be derived from the same table
@@ -86,9 +90,10 @@ grain to declare).
 
 ```mermaid
 erDiagram
-    dim_date ||--o{ fct_orders : "order_date"
+    dim_date ||--o{ fct_orders : "order_date_key"
+    dim_date ||--o{ fct_orders : "shipped_date_key (role-playing, nullable)"
     dim_customer ||--o{ fct_orders : "customer_key (as-of order date)"
-    dim_product ||--o{ fct_orders : "product_key"
+    dim_product ||--o{ fct_orders : "product_key (as-of order date)"
 
     dim_date ||--o{ fct_subscription_daily : "snapshot_date"
     dim_customer ||--o{ fct_subscription_daily : "customer_key (as-of snapshot date)"
@@ -126,16 +131,23 @@ erDiagram
         string name
         string category
         decimal list_price
+        decimal cost_amount
     }
     fct_orders {
-        string order_id PK
-        string order_item_id PK
-        date order_date FK
+        string order_id "degenerate dimension"
+        string order_item_id "grain key, with order_id"
+        string status "degenerate dimension"
         string customer_key FK
         string product_key FK
+        date order_date_key FK
+        date shipped_date_key "FK, nullable"
         int quantity
-        decimal revenue
-        decimal refund_amount
+        decimal gross_amount_usd
+        decimal discount_amount_usd
+        decimal net_amount_usd
+        decimal shipping_amount_usd
+        decimal refunded_amount_usd
+        decimal cost_amount_usd
     }
     fct_subscription_daily {
         string subscription_id PK
