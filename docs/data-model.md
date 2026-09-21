@@ -200,3 +200,66 @@ around it, the generator was extended (same PR as this doc) to add:
 
 `generator/README.md` documents the field-level detail; this section stays only as a record that the gap
 was caught at design time, before implementation, rather than discovered downstream.
+
+## 8. SCD type comparison: `dim_product.list_price`
+
+`AE-11` builds `list_price` three different ways to show the choice isn't just an implementation
+detail, it changes the actual numbers a report produces. All three answer the same question,
+"revenue by price band" (bands: budget `< $150`, mid `$150–$365`, premium `≥ $365`, the observed
+price distribution's tertiles), via one query run against all three:
+`transform/analyses/scd_type_comparison_revenue_by_price_band.sql`.
+
+| | Type 1 (overwrite) | Type 2 (new row) | Type 3 (`previous_list_price` column) |
+|---|---|---|---|
+| Storage | 60 rows (1/product) | 140 rows (1/price version) | 60 rows (1/product) |
+| Query complexity | Trivial equi-join on `product_id` | Requires an as-of range join (`order_date BETWEEN valid_from AND valid_to`) | Trivial equi-join, but has no date column to decide which price applies to a given order |
+| Can answer | "What is the current price?" | "What was the price at any point in time?" | "What is the current price, and what was it one change ago?" |
+| Can't answer | Anything about the past | Nothing — this is the general case | Anything more than one step back, or *when* a change happened |
+| Failure mode observed | Silently reprices every past order at today's price | An as-of join can find no match for a date outside the dimension's recorded history | Most revenue can't be time-located at all, only "current" vs "one step back" in aggregate |
+
+Real numbers, run against the full dataset (total revenue **$45,172,984.79**, identical across all
+three, only the banding differs):
+
+| SCD type | Band | Revenue | % of total |
+|---|---|---|---|
+| Type 1 | budget | $2,985,496.88 | 6.6% |
+| Type 1 | mid | $15,934,821.02 | 35.3% |
+| Type 1 | premium | $26,252,666.89 | 58.1% |
+| Type 2 | budget | $2,921,181.71 | 6.5% |
+| Type 2 | mid | $16,149,176.51 | 35.7% |
+| Type 2 | premium | $25,137,921.18 | 55.6% |
+| Type 2 | *no price recorded* | $964,705.39 | 2.1% |
+| Type 3 | budget | $2,897,595.53 | 6.4% |
+| Type 3 | mid | $9,203,724.15 | 20.4% |
+| Type 3 | premium | $19,847,362.39 | 43.9% |
+| Type 3 | *no prior price* | $13,224,302.72 | 29.3% |
+
+What the differences mean:
+
+- **Type 1 overstates the premium band by ~4.4%** ($26.25M vs. Type 2's $25.14M) because every
+  historical order gets repriced at today's catalog price. Prices in this dataset trend upward, so
+  old orders get silently pulled into a higher band than they actually sold in.
+- **Type 2 is the only one that can *see* the gap**, rather than papering over it: 2.1% of revenue
+  ($964,705) belongs to orders placed before that product's earliest recorded price (e.g. `prd_026`
+  has orders from 2024-09-14, but no price on record until 2025-02-23). Type 1 and Type 3 can't
+  produce this bucket at all — they always resolve to *some* price, even when it's the wrong one for
+  that date, which is worse: a wrong-but-present answer is easier to miss than a `null`.
+- **Type 3 answers a genuinely different question, not a smaller version of Type 2's.** Banding by
+  `previous_list_price` isn't a point-in-time reconstruction (there's no column recording *when* the
+  current price started, so no order can be correctly assigned to "current" vs. "previous"). It's a
+  before/after comparison in aggregate: "what would revenue look like under the prior pricing
+  scheme." 29.3% of revenue can't even ask that question, those are the 15 products (of 60) that
+  have only ever had one price, so `previous_list_price` is `null`.
+
+**The specific business question that makes Type 2 necessary here:** "What discount, if any, did a
+customer receive relative to the catalog price at the time they placed the order?" Type 1 can't
+answer this for any order before the most recent price change, it would compare the price paid
+against today's catalog price, not the one actually being offered. Type 3 only gets it right for
+orders in the two most recent pricing periods, anything older silently falls back to comparing
+against the wrong "previous" price. Type 2 gets every order right, at the cost of a range join
+instead of an equi-join.
+
+**Production choice: `dim_product` is Type 2**, matching the ERD in §5 and the same as-of-range join
+pattern `AE-10` already established for `dim_customer`. `dim_product_type1` and `dim_product_type3`
+exist only for this comparison, not as production models (no contract, not referenced by any fact
+table).
